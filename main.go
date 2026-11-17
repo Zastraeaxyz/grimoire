@@ -13,6 +13,7 @@ import (
 
 	"grimoire/internal/bot"
 	"grimoire/internal/config"
+	"grimoire/internal/features/rss"
 	"grimoire/internal/features/welcome"
 	"grimoire/internal/store"
 )
@@ -65,6 +66,13 @@ func run() error {
 	}
 
 	welcome.New(cfg.GuildID, st, log).Register(b)
+	rss.New(ctx, rss.Options{
+		GuildID:            cfg.GuildID,
+		Store:              st,
+		Log:                log,
+		PollInterval:       cfg.RSSPollInterval,
+		MaxAttachmentBytes: cfg.RSSMaxAttachmentBytes,
+	}).Register(b)
 
 	health := newHealthServer(cfg.Port, log)
 	health.start()
