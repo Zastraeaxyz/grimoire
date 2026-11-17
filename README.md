@@ -22,7 +22,7 @@ Discord bot for the zxyz server, built on
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
-- `/rss list` - show feeds, channels, last check, and last error
+- `/rss list` - show each feed's username, domain, channel, last check, and last error
 - `/rss test url:<url>` - preview the newest item without saving the feed
 - `/rss check` - poll every feed now
 
@@ -31,6 +31,10 @@ restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
 need a channel where the bot can View Channel, Send Messages, Embed Links, and
 Attach Files. Sources are often NSFW, so an age-restricted channel is
 recommended.
+
+Commands are limited to server admins for now: members need **Manage Server**
+or **Administrator**. The welcome confirmation button stays open to every
+member.
 
 ## Configuration
 
