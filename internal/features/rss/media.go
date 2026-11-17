@@ -29,20 +29,27 @@ type downloadedMedia struct {
 // downloadMedia fetches the images and videos for an item. Failures are
 // logged and skipped: one dead CDN link must not stop the post.
 func (f *Feature) downloadMedia(ctx context.Context, item FeedItem) []downloadedMedia {
+	media := item.Media
+	// bdsmlr's RSS advertises the original upload, which can be a converted or
+	// deleted file. Its API returns the current media, usually an MP4.
+	if resolved := f.bdsmlrMediaFor(ctx, item); resolved != nil {
+		media = resolved
+	}
+
 	var (
 		files []downloadedMedia
 		total int64
 	)
 
-	for i, media := range item.Media {
+	for i, candidate := range media {
 		if len(files) >= maxAttachments {
 			break
 		}
 
-		data, contentType, err := f.downloadOne(ctx, media.URL, f.maxAttachmentBytes)
+		data, contentType, err := f.downloadOne(ctx, candidate.URL, f.maxAttachmentBytes)
 		if err != nil {
 			f.log.Debug("skipping unavailable feed media",
-				"url", media.URL,
+				"url", candidate.URL,
 				"err", err,
 			)
 			continue
@@ -50,14 +57,14 @@ func (f *Feature) downloadMedia(ctx context.Context, item FeedItem) []downloaded
 		if total+int64(len(data)) > maxTotalAttachmentBytes {
 			f.log.Warn("feed post exceeds attachment budget; dropping remaining media",
 				"guid", item.GUID,
-				"dropped_from", media.URL,
+				"dropped_from", candidate.URL,
 			)
 			break
 		}
 
 		total += int64(len(data))
 		files = append(files, downloadedMedia{
-			FileName: fmt.Sprintf("media-%d%s", i+1, extensionFor(contentType, media.URL)),
+			FileName: fmt.Sprintf("media-%d%s", i+1, extensionFor(contentType, candidate.URL)),
 			Data:     data,
 		})
 	}
