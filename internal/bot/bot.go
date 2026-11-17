@@ -200,6 +200,27 @@ func (b *Bot) syncCommands(s *discordgo.Session) error {
 	return nil
 }
 
+// canUseBot reports whether the interaction comes from a server admin. The
+// bot is admin-only for now. Component handlers such as the welcome button
+// are intentionally not gated, because they are meant for every member.
+func canUseBot(i *discordgo.InteractionCreate) bool {
+	if i.Member == nil {
+		return false
+	}
+	perms := i.Member.Permissions
+	return perms&(discordgo.PermissionAdministrator|discordgo.PermissionManageGuild) != 0
+}
+
+func interactionUserID(i *discordgo.InteractionCreate) string {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID
+	}
+	if i.User != nil {
+		return i.User.ID
+	}
+	return ""
+}
+
 func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionPing &&
 		i.Type != discordgo.InteractionApplicationCommand &&
@@ -222,6 +243,16 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 
 	case discordgo.InteractionApplicationCommand:
 		name := i.ApplicationCommandData().Name
+		if !canUseBot(i) {
+			b.Log.Warn("rejected command from non-admin",
+				"command", name,
+				"user_id", interactionUserID(i),
+			)
+			if err := ReplyEphemeral(s, i, "This bot is limited to server admins for now."); err != nil {
+				b.Log.Warn("replying to non-admin", "err", err)
+			}
+			return
+		}
 		b.mu.RLock()
 		handler := b.commandHandlers[name]
 		b.mu.RUnlock()
@@ -235,6 +266,16 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 
 	case discordgo.InteractionApplicationCommandAutocomplete:
 		name := i.ApplicationCommandData().Name
+		if !canUseBot(i) {
+			b.Log.Warn("rejected autocomplete from non-admin",
+				"command", name,
+				"user_id", interactionUserID(i),
+			)
+			if err := RespondAutocomplete(s, i, []*discordgo.ApplicationCommandOptionChoice{}); err != nil {
+				b.Log.Warn("replying to non-admin autocomplete", "err", err)
+			}
+			return
+		}
 		b.mu.RLock()
 		handler := b.autocompletes[name]
 		b.mu.RUnlock()
