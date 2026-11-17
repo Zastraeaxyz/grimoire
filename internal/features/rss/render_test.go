@@ -61,6 +61,54 @@ func TestBuildMessageUsesFeedAndPostMetadata(t *testing.T) {
 	}
 }
 
+func TestFooterText(t *testing.T) {
+	cases := []struct {
+		name string
+		item FeedItem
+		want string
+	}{
+		{
+			name: "plain feed keeps the site",
+			item: FeedItem{Link: "https://imaglr.com/post/1"},
+			want: "imaglr.com",
+		},
+		{
+			name: "reddit post names the author",
+			item: FeedItem{
+				Link:   "https://www.reddit.com/r/cats/comments/a/x/",
+				Author: "alice",
+				Reddit: true,
+			},
+			want: "u/alice \u2022 reddit.com",
+		},
+		{
+			name: "reddit gallery is called out",
+			item: FeedItem{
+				Link:    "https://www.reddit.com/r/cats/comments/a/x/",
+				Author:  "alice",
+				Reddit:  true,
+				Gallery: true,
+			},
+			want: "Gallery \u2022 u/alice \u2022 reddit.com",
+		},
+		{
+			name: "reddit post without an author",
+			item: FeedItem{
+				Link:   "https://www.reddit.com/r/cats/comments/a/x/",
+				Reddit: true,
+			},
+			want: "reddit.com",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := footerText(tc.item); got != tc.want {
+				t.Fatalf("footerText = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCleanFeedTitle(t *testing.T) {
 	cases := map[string]string{
 		"Imaglr - zastraea's Profile": "zastraea",

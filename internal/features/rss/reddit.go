@@ -467,12 +467,13 @@ func redditListingItem(n *xhtml.Node) (FeedItem, bool) {
 		content = strings.TrimSpace(content + "\n<p>" + html.EscapeString(dest) + "</p>")
 	}
 
+	gallery := isRedditGallery(dest)
 	thumbnail := redditThumbnail(n)
 	var declared []Media
 	switch {
 	case isImageDestination(dest):
 		declared = append(declared, Media{URL: dest})
-	case isRedditGallery(dest):
+	case gallery:
 		if cover := redditGalleryCover(thumbnail); cover != "" {
 			declared = append(declared, Media{URL: cover})
 		} else if thumbnail != "" {
@@ -491,6 +492,8 @@ func redditListingItem(n *xhtml.Node) (FeedItem, bool) {
 		Author:    author,
 		Content:   content,
 		Published: redditPublishedAt(n),
+		Reddit:    true,
+		Gallery:   gallery,
 	}
 	item.Media = collectMedia(item, declared)
 	return item, true
@@ -643,15 +646,19 @@ func redditPostIDFromGUID(guid string) string {
 // redditLoadButton renders the per-post component. The custom ID carries only
 // the post id, so buttons keep working across restarts. Any member may press
 // it; the component router does not require admin rights.
-func redditLoadButton(guid string) []discordgo.MessageComponent {
-	id := redditPostIDFromGUID(guid)
+func redditLoadButton(item FeedItem) []discordgo.MessageComponent {
+	id := redditPostIDFromGUID(item.GUID)
 	if id == "" {
 		return nil
+	}
+	label := "Load full post"
+	if item.Gallery {
+		label = "Load gallery"
 	}
 	return []discordgo.MessageComponent{
 		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 			discordgo.Button{
-				Label:    "Load full post",
+				Label:    label,
 				Style:    discordgo.SecondaryButton,
 				CustomID: "reddit:load:" + id,
 			},
@@ -748,11 +755,14 @@ func parseRedditPost(body []byte) (FeedItem, error) {
 		content = strings.TrimSpace(content + "\n<p>" + html.EscapeString(dest) + "</p>")
 	}
 
+	isGallery := data.IsGallery || len(data.GalleryData.Items) > 0
 	item := FeedItem{
 		Title:   strings.TrimSpace(data.Title),
 		Link:    link,
 		Author:  strings.TrimSpace(data.Author),
 		Content: content,
+		Reddit:  true,
+		Gallery: isGallery,
 	}
 	if data.CreatedUTC > 0 {
 		item.Published = time.Unix(int64(data.CreatedUTC), 0).UTC()
@@ -760,7 +770,7 @@ func parseRedditPost(body []byte) (FeedItem, error) {
 
 	var declared []Media
 	switch {
-	case data.IsGallery || len(data.GalleryData.Items) > 0:
+	case isGallery:
 		declared = append(declared, redditGalleryMedia(data)...)
 	default:
 		if video := redditVideoURL(data); video != "" {

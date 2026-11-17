@@ -33,7 +33,7 @@ func (f *Feature) buildMessage(ctx context.Context, feed *store.Feed, item FeedI
 		Author:      &discordgo.MessageEmbedAuthor{Name: feedDisplayName(feed), URL: item.Link},
 		Title:       truncateText(displayTitle(item), embedTitleLimit),
 		Description: truncateText(text, embedDescriptionLimit),
-		Footer:      &discordgo.MessageEmbedFooter{Text: siteName(item.Link)},
+		Footer:      &discordgo.MessageEmbedFooter{Text: footerText(item)},
 	}
 	if item.Link != "" {
 		embed.URL = item.Link
@@ -45,7 +45,7 @@ func (f *Feature) buildMessage(ctx context.Context, feed *store.Feed, item FeedI
 
 	msg := &discordgo.MessageSend{
 		Embeds:     []*discordgo.MessageEmbed{embed},
-		Components: redditLoadButton(item.GUID),
+		Components: redditLoadButton(item),
 	}
 
 	for _, media := range f.downloadMedia(ctx, item) {
@@ -116,6 +116,27 @@ func siteName(rawURL string) string {
 		return ""
 	}
 	return strings.TrimPrefix(strings.ToLower(u.Host), "www.")
+}
+
+// footerText identifies a post's origin. Reddit posts also name the author,
+// and galleries are called out because the first post only carries the cover.
+func footerText(item FeedItem) string {
+	site := siteName(item.Link)
+	if !item.Reddit {
+		return site
+	}
+
+	parts := make([]string, 0, 3)
+	if item.Gallery {
+		parts = append(parts, "Gallery")
+	}
+	if item.Author != "" {
+		parts = append(parts, "u/"+item.Author)
+	}
+	if site != "" {
+		parts = append(parts, site)
+	}
+	return strings.Join(parts, " \u2022 ")
 }
 
 // messageLink builds a jump link for a posted item.

@@ -138,6 +138,15 @@ func TestParseRedditListing(t *testing.T) {
 	if len(gallery.Media) != 1 || gallery.Media[0].URL != "https://i.redd.it/cover1.jpeg" {
 		t.Errorf("gallery media = %+v", gallery.Media)
 	}
+	if !gallery.Gallery {
+		t.Error("gallery post was not marked as a gallery")
+	}
+	if !gallery.Reddit {
+		t.Error("gallery post was not marked as reddit")
+	}
+	if link.Gallery {
+		t.Error("link post was marked as a gallery")
+	}
 
 	video := feed.Items[4]
 	if len(video.Media) != 1 || !strings.HasPrefix(video.Media[0].URL, "https://preview.redd.it/vthumb.jpeg") {
@@ -424,6 +433,9 @@ func TestParseRedditPostGallery(t *testing.T) {
 	if len(item.Media) != 2 {
 		t.Fatalf("media = %d, want 2: %+v", len(item.Media), item.Media)
 	}
+	if !item.Gallery || !item.Reddit {
+		t.Errorf("gallery flags = %v/%v", item.Gallery, item.Reddit)
+	}
 	if item.Media[0].URL != "https://preview.redd.it/m1.jpeg?width=1080&s=sig" {
 		t.Errorf("media[0] = %q", item.Media[0].URL)
 	}
@@ -475,7 +487,7 @@ func TestRedditPostIDFromCustomID(t *testing.T) {
 }
 
 func TestRedditLoadButton(t *testing.T) {
-	components := redditLoadButton("t3_abc123")
+	components := redditLoadButton(FeedItem{GUID: "t3_abc123"})
 	if len(components) != 1 {
 		t.Fatalf("components = %d", len(components))
 	}
@@ -490,7 +502,21 @@ func TestRedditLoadButton(t *testing.T) {
 	if button.Label != "Load full post" || button.CustomID != "reddit:load:abc123" {
 		t.Errorf("button = %+v", button)
 	}
-	if redditLoadButton("not-a-reddit-post") != nil {
+
+	gallery := redditLoadButton(FeedItem{GUID: "t3_abc123", Gallery: true})
+	row, ok = gallery[0].(discordgo.ActionsRow)
+	if !ok {
+		t.Fatalf("gallery component type = %T", gallery[0])
+	}
+	button, ok = row.Components[0].(discordgo.Button)
+	if !ok {
+		t.Fatalf("gallery button type = %T", row.Components[0])
+	}
+	if button.Label != "Load gallery" {
+		t.Errorf("gallery button label = %q", button.Label)
+	}
+
+	if redditLoadButton(FeedItem{GUID: "not-a-reddit-post"}) != nil {
 		t.Error("non-reddit items must not get the button")
 	}
 }

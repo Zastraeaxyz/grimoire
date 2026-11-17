@@ -29,6 +29,12 @@ type FeedItem struct {
 	Summary   string
 	Published time.Time
 	Media     []Media
+
+	// Reddit marks a post read from a reddit listing or post detail. Gallery
+	// marks a reddit gallery, which only shows its cover until the reader
+	// asks for the full post.
+	Reddit  bool
+	Gallery bool
 }
 
 // parsedFeed is the result of decoding a document.
