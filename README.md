@@ -19,6 +19,10 @@ Discord bot for the zxyz server, built on
   the size cap stays on the source post, which the embed links to. bdsmlr posts
   are resolved through bdsmlr's post API, because the feed can advertise an
   original GIF that now exists only as an MP4.
+- **Reddit feeds**: reddit retired its `.rss` endpoints, so `/rss add` also
+  accepts subreddit and user URLs and reads their newest-first listing
+  directly. Every Reddit post gets a **Load full post** button that fetches the
+  complete gallery or video on demand. See [Reddit feeds](#reddit-feeds).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -31,6 +35,47 @@ restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
 need a channel where the bot can View Channel, Send Messages, Embed Links, and
 Attach Files. Sources are often NSFW, so an age-restricted channel is
 recommended.
+
+### Reddit feeds
+
+Reddit no longer serves RSS for subreddits or users, and its listing pages now
+require a signed-in session. Set `REDDIT_SESSION` to the `reddit_session`
+cookie from a logged-in browser:
+
+1. Sign in at `https://old.reddit.com`.
+2. Open DevTools, then Application, then Cookies, then `https://old.reddit.com`.
+3. Copy the `reddit_session` value into `REDDIT_SESSION`.
+
+Both the bare value and a full `reddit_session=...` cookie header are
+accepted. The cookie is never logged. Without it, Reddit feeds fail with a
+clear error and `/rss list` shows it.
+
+Supported URLs include the plain page, the `.rss` shapes, listing sorts, and
+user profiles:
+
+```
+https://reddit.com/r/cats
+https://www.reddit.com/r/cats/new
+https://www.reddit.com/r/cats/.rss
+https://www.reddit.com/user/someone
+https://www.reddit.com/u/someone/submitted.rss
+```
+
+All of them are normalized to `https://www.reddit.com/r/<name>` or
+`https://www.reddit.com/user/<name>`, and a feed always follows the newest
+posts, regardless of the sort in the URL. Search pages and post permalinks are
+rejected.
+
+`REDDIT_INCLUDE_NSFW` defaults to `true`, so NSFW communities and profiles can
+be followed. It sends Reddit's `over18` cookie and `include_over_18=on`.
+Turn it off to keep the bot out of NSFW listings entirely.
+
+The first post shows what the listing carries: the full image for image posts,
+the cover for galleries, and a still frame for videos and link posts. Press
+**Load full post** to fetch the post's detail and re-upload every gallery image
+or the video's MP4. The button is available to every member, and it disables
+itself after a successful load. Reddit's MP4 fallback is video-only, so loaded
+videos have no audio.
 
 Commands are limited to server admins for now: members need **Manage Server**
 or **Administrator**. The welcome confirmation button stays open to every
@@ -49,6 +94,9 @@ member.
 | `BASE_ROLE_ID` | no | | Seeds settings on first boot |
 | `RSS_POLL_INTERVAL` | no | `1h` | Feed poll interval (`30m`, `2h`) |
 | `RSS_MAX_ATTACHMENT_BYTES` | no | `10485760` | Largest media file re-uploaded to Discord; accepts `10MiB` |
+| `REDDIT_SESSION` | for Reddit feeds | | `reddit_session` cookie from a logged-in browser |
+| `REDDIT_USER_AGENT` | no | Firefox desktop | User-Agent for Reddit requests; Reddit rejects generic agents |
+| `REDDIT_INCLUDE_NSFW` | no | `true` | Allow NSFW subreddits and profiles (`over18`, `include_over_18=on`) |
 
 Copy `.env.example` to `.env` for local development. Real environment
 variables override `.env`, and database settings override the seed values
