@@ -1,0 +1,3 @@
+[tasks.deploy]
+description = "Deploy latest version to railway"
+run = 'railway up -m "$(git log -1 --pretty=%s)"'
