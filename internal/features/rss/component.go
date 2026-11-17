@@ -51,7 +51,12 @@ func (f *Feature) handleRedditComponent(ctx context.Context, s *discordgo.Sessio
 	if err := editInteractionResponse(s, i, "", msg.Embeds, msg.Files); err != nil {
 		return err
 	}
-	f.disableRedditButton(s, i)
+	// Keep the original when it held the only media: if every download
+	// failed, deleting it would replace a cover with a text-only post. The
+	// button stays available so the load can be retried.
+	if len(msg.Files) > 0 || len(item.Media) == 0 {
+		f.deleteOriginalMessage(s, i)
+	}
 	return nil
 }
 
@@ -71,20 +76,15 @@ func editInteractionResponse(s *discordgo.Session, i *discordgo.InteractionCreat
 	return err
 }
 
-// disableRedditButton removes the button once the full post has loaded. The
-// button custom ID is stateless, so a stale one would otherwise reload the
-// same media again.
-func (f *Feature) disableRedditButton(s *discordgo.Session, i *discordgo.InteractionCreate) {
+// deleteOriginalMessage removes the placeholder post once the full post is
+// live, so the channel keeps one message instead of a cover and a duplicate.
+// The bot deletes its own message, so no extra permission is needed.
+func (f *Feature) deleteOriginalMessage(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Message == nil || i.ChannelID == "" || i.Message.ID == "" {
 		return
 	}
-	empty := []discordgo.MessageComponent{}
-	if _, err := s.ChannelMessageEditComplex(&discordgo.MessageEdit{
-		ID:         i.Message.ID,
-		Channel:    i.ChannelID,
-		Components: &empty,
-	}); err != nil {
-		f.log.Warn("disabling reddit load button",
+	if err := s.ChannelMessageDelete(i.ChannelID, i.Message.ID); err != nil {
+		f.log.Warn("deleting original reddit post after loading the full post",
 			"message_id", i.Message.ID,
 			"err", err,
 		)
