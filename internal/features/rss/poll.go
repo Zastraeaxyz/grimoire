@@ -2,6 +2,7 @@ package rss
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -66,10 +67,9 @@ func (f *Feature) pollFeed(parent context.Context, s *discordgo.Session, feed *s
 		return 0, f.store.UpdateFeedFetch(ctx, feed.ID, "", "", "", "", "")
 	}
 
-	parsed, err := parseFeed(result.Body)
-	if err != nil {
-		f.recordFetchError(feed, fmt.Errorf("parsing feed: %w", err))
-		return 0, err
+	parsed := result.Feed
+	if parsed == nil {
+		return 0, errors.New("feed returned no content")
 	}
 	domain := feedDomain(parsed, feed.URL)
 	if err := f.store.UpdateFeedFetch(ctx, feed.ID, parsed.Title, domain, result.ETag, result.LastModified, ""); err != nil {
@@ -146,7 +146,8 @@ func (f *Feature) postItem(ctx context.Context, s *discordgo.Session, feed *stor
 		"err", err,
 	)
 	sent, fallbackErr := s.ChannelMessageSendComplex(feed.ChannelID, &discordgo.MessageSend{
-		Embeds: msg.Embeds,
+		Embeds:     msg.Embeds,
+		Components: msg.Components,
 	})
 	if fallbackErr != nil {
 		return "", fmt.Errorf("%w (without media: %v)", err, fallbackErr)

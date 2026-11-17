@@ -32,6 +32,12 @@ type Options struct {
 	Log                *slog.Logger
 	PollInterval       time.Duration
 	MaxAttachmentBytes int64
+
+	// Reddit listing pages need a signed-in session. The agent and cookie are
+	// only used for reddit feeds.
+	RedditSession     string
+	RedditUserAgent   string
+	RedditIncludeNSFW bool
 }
 
 // Feature polls feeds and posts new items into their channels.
@@ -43,6 +49,13 @@ type Feature struct {
 	pollInterval       time.Duration
 	maxAttachmentBytes int64
 	httpClient         *http.Client
+
+	redditSession     string
+	redditUserAgent   string
+	redditIncludeNSFW bool
+	redditMu          sync.Mutex
+	redditLastRequest time.Time
+	redditLoading     sync.Map
 
 	startOnce sync.Once
 	pollMu    sync.Mutex
@@ -62,6 +75,9 @@ func New(ctx context.Context, opts Options) *Feature {
 	if opts.MaxAttachmentBytes <= 0 {
 		opts.MaxAttachmentBytes = 10 << 20
 	}
+	if opts.RedditUserAgent == "" {
+		opts.RedditUserAgent = defaultRedditUserAgent
+	}
 
 	return &Feature{
 		ctx:                ctx,
@@ -71,6 +87,9 @@ func New(ctx context.Context, opts Options) *Feature {
 		pollInterval:       opts.PollInterval,
 		maxAttachmentBytes: opts.MaxAttachmentBytes,
 		httpClient:         &http.Client{Timeout: 60 * time.Second},
+		redditSession:      normalizeRedditCookie(opts.RedditSession),
+		redditUserAgent:    opts.RedditUserAgent,
+		redditIncludeNSFW:  opts.RedditIncludeNSFW,
 	}
 }
 
@@ -78,6 +97,7 @@ func New(ctx context.Context, opts Options) *Feature {
 func (f *Feature) Register(b *bot.Bot) {
 	b.AddCommand(command(), f.handleCommand)
 	b.AddAutocomplete(CommandName, f.handleAutocomplete)
+	b.AddComponent("reddit", f.handleRedditComponent)
 	b.AddReadyHook(f.handleReady)
 }
 
@@ -97,6 +117,7 @@ func (f *Feature) run(s *discordgo.Session) {
 	case <-time.After(5 * time.Second):
 	}
 
+	f.warnMissingRedditSession()
 	f.pollAll(s)
 
 	ticker := time.NewTicker(f.pollInterval)
@@ -188,12 +209,12 @@ func (f *Feature) add(ctx context.Context, s *discordgo.Session, i *discordgo.In
 
 	result, err := f.fetchFeed(ctx, feedURL, "", "")
 	if err != nil {
+		if errors.Is(err, errNotAFeed) {
+			return bot.EditEphemeral(s, i, "That URL does not return a readable RSS or Atom feed.")
+		}
 		return bot.EditEphemeral(s, i, "I could not load that feed: "+err.Error())
 	}
-	parsed, err := parseFeed(result.Body)
-	if err != nil {
-		return bot.EditEphemeral(s, i, "That URL does not return a readable RSS or Atom feed.")
-	}
+	parsed := result.Feed
 	if len(parsed.Items) == 0 {
 		return bot.EditEphemeral(s, i, "That feed is readable but has no items to follow yet.")
 	}
@@ -371,12 +392,12 @@ func (f *Feature) test(ctx context.Context, s *discordgo.Session, i *discordgo.I
 
 	result, err := f.fetchFeed(ctx, feedURL, "", "")
 	if err != nil {
+		if errors.Is(err, errNotAFeed) {
+			return bot.EditEphemeral(s, i, "That URL does not return a readable RSS or Atom feed.")
+		}
 		return bot.EditEphemeral(s, i, "I could not load that feed: "+err.Error())
 	}
-	parsed, err := parseFeed(result.Body)
-	if err != nil {
-		return bot.EditEphemeral(s, i, "That URL does not return a readable RSS or Atom feed.")
-	}
+	parsed := result.Feed
 	if len(parsed.Items) == 0 {
 		return bot.EditEphemeral(s, i, "That feed has no items right now.")
 	}
@@ -493,6 +514,13 @@ func normalizeFeedURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "", errors.New("That is not a valid http(s) URL.")
+	}
+	if isRedditHost(u.Hostname()) {
+		target, ok := redditTargetFromURL(u)
+		if !ok {
+			return "", errors.New("That Reddit URL is not a subreddit or user feed. Use https://www.reddit.com/r/cats or https://www.reddit.com/user/name.")
+		}
+		return target.FeedURL, nil
 	}
 	u.Fragment = ""
 	u.Scheme = strings.ToLower(u.Scheme)

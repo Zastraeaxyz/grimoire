@@ -44,7 +44,8 @@ func (f *Feature) buildMessage(ctx context.Context, feed *store.Feed, item FeedI
 	}
 
 	msg := &discordgo.MessageSend{
-		Embeds: []*discordgo.MessageEmbed{embed},
+		Embeds:     []*discordgo.MessageEmbed{embed},
+		Components: redditLoadButton(item.GUID),
 	}
 
 	for _, media := range f.downloadMedia(ctx, item) {

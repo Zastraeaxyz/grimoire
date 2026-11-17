@@ -72,6 +72,9 @@ func run() error {
 		Log:                log,
 		PollInterval:       cfg.RSSPollInterval,
 		MaxAttachmentBytes: cfg.RSSMaxAttachmentBytes,
+		RedditSession:      cfg.RedditSession,
+		RedditUserAgent:    cfg.RedditUserAgent,
+		RedditIncludeNSFW:  cfg.RedditIncludeNSFW,
 	}).Register(b)
 
 	health := newHealthServer(cfg.Port, log)

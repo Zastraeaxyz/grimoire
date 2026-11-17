@@ -24,6 +24,12 @@ type Config struct {
 	RSSPollInterval       time.Duration
 	RSSMaxAttachmentBytes int64
 
+	// Reddit access. Reddit requires a logged-in session for its listing
+	// pages, so the bot reads them with a reddit_session cookie.
+	RedditSession     string
+	RedditUserAgent   string
+	RedditIncludeNSFW bool
+
 	// Optional seed values for the first boot. Once configured through
 	// /welcome setup the database is the source of truth.
 	WelcomeChannelID string
@@ -43,6 +49,8 @@ func Load() (*Config, error) {
 		LogLevel:         parseLevel(os.Getenv("LOG_LEVEL")),
 		WelcomeChannelID: strings.TrimSpace(os.Getenv("WELCOME_CHANNEL_ID")),
 		BaseRoleID:       strings.TrimSpace(os.Getenv("BASE_ROLE_ID")),
+		RedditSession:    strings.TrimSpace(os.Getenv("REDDIT_SESSION")),
+		RedditUserAgent:  strings.TrimSpace(os.Getenv("REDDIT_USER_AGENT")),
 	}
 
 	interval, err := time.ParseDuration(envOr("RSS_POLL_INTERVAL", "1h"))
@@ -56,6 +64,12 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("RSS_MAX_ATTACHMENT_BYTES: %w", err)
 	}
 	cfg.RSSMaxAttachmentBytes = maxBytes
+
+	includeNSFW, err := envBool("REDDIT_INCLUDE_NSFW", true)
+	if err != nil {
+		return nil, err
+	}
+	cfg.RedditIncludeNSFW = includeNSFW
 
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -93,6 +107,22 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// envBool reads a boolean environment variable, falling back when unset.
+func envBool(key string, fallback bool) (bool, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	switch strings.ToLower(raw) {
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s %q is not a boolean", key, raw)
+	}
 }
 
 // parseBytes accepts a plain byte count or a KiB/MiB suffix such as "10MiB".

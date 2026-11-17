@@ -24,6 +24,14 @@ func DeferEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate) error 
 	})
 }
 
+// DeferPublic acknowledges the interaction with a visible reply, for work
+// whose result the whole channel should see.
+func DeferPublic(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+	})
+}
+
 // EditEphemeral replaces a deferred reply with content.
 func EditEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
 	_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
