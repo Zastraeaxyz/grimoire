@@ -31,3 +31,13 @@ func EditEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content
 	})
 	return err
 }
+
+// RespondAutocomplete sends autocomplete suggestions for an option.
+func RespondAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate, choices []*discordgo.ApplicationCommandOptionChoice) error {
+	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: choices,
+		},
+	})
+}

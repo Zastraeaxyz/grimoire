@@ -27,6 +27,9 @@ type CommandHandler func(ctx context.Context, s *discordgo.Session, i *discordgo
 // ComponentHandler runs a message component interaction (buttons, selects).
 type ComponentHandler func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error
 
+// AutocompleteHandler answers suggestions for a slash command option.
+type AutocompleteHandler func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error
+
 // ReadyHook runs after every gateway READY event.
 type ReadyHook func(ctx context.Context, s *discordgo.Session) error
 
@@ -40,6 +43,7 @@ type Bot struct {
 	mu                sync.RWMutex
 	commands          map[string]*discordgo.ApplicationCommand
 	commandHandlers   map[string]CommandHandler
+	autocompletes     map[string]AutocompleteHandler
 	componentHandlers map[string]ComponentHandler
 	readyHooks        []ReadyHook
 	commandsSynced    bool
@@ -69,6 +73,7 @@ func New(opts Options) (*Bot, error) {
 		guildID:           opts.GuildID,
 		commands:          make(map[string]*discordgo.ApplicationCommand),
 		commandHandlers:   make(map[string]CommandHandler),
+		autocompletes:     make(map[string]AutocompleteHandler),
 		componentHandlers: make(map[string]ComponentHandler),
 	}
 	s.AddHandler(b.handleReady)
@@ -91,6 +96,13 @@ func (b *Bot) AddComponent(namespace string, handler ComponentHandler) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.componentHandlers[namespace] = handler
+}
+
+// AddAutocomplete registers suggestions for a command's options.
+func (b *Bot) AddAutocomplete(commandName string, handler AutocompleteHandler) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.autocompletes[commandName] = handler
 }
 
 // AddReadyHook registers work that must be re-validated on every reconnect.
@@ -191,6 +203,7 @@ func (b *Bot) syncCommands(s *discordgo.Session) error {
 func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionPing &&
 		i.Type != discordgo.InteractionApplicationCommand &&
+		i.Type != discordgo.InteractionApplicationCommandAutocomplete &&
 		i.Type != discordgo.InteractionMessageComponent {
 		return
 	}
@@ -218,6 +231,19 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 		}
 		if err := handler(ctx, s, i); err != nil {
 			b.handleError(s, i, err)
+		}
+
+	case discordgo.InteractionApplicationCommandAutocomplete:
+		name := i.ApplicationCommandData().Name
+		b.mu.RLock()
+		handler := b.autocompletes[name]
+		b.mu.RUnlock()
+		if handler == nil {
+			b.Log.Warn("unhandled autocomplete", "command", name)
+			return
+		}
+		if err := handler(ctx, s, i); err != nil {
+			b.Log.Error("autocomplete failed", "command", name, "err", err)
 		}
 
 	case discordgo.InteractionMessageComponent:
