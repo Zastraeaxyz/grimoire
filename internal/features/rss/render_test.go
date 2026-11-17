@@ -74,3 +74,18 @@ func TestCleanFeedTitle(t *testing.T) {
 		}
 	}
 }
+
+func TestFeedLabel(t *testing.T) {
+	feed := &store.Feed{
+		Title:  "Imaglr - zastraea's Profile",
+		Domain: "imaglr.com",
+	}
+	if got := feedLabel(feed); got != "zastraea on imaglr.com" {
+		t.Fatalf("feedLabel = %q", got)
+	}
+
+	feed.Domain = ""
+	if got := feedLabel(feed); got != "zastraea" {
+		t.Fatalf("feedLabel without domain = %q", got)
+	}
+}

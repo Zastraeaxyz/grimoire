@@ -33,8 +33,9 @@ type FeedItem struct {
 
 // parsedFeed is the result of decoding a document.
 type parsedFeed struct {
-	Title string
-	Items []FeedItem
+	Title   string
+	SiteURL string
+	Items   []FeedItem
 }
 
 // parseFeed decodes an RSS 2.0 or Atom document.
@@ -71,9 +72,18 @@ func rootElement(data []byte) (string, error) {
 // rssDocument covers the subset of RSS 2.0 the bot needs.
 type rssDocument struct {
 	Channel struct {
-		Title string    `xml:"title"`
-		Items []rssItem `xml:"item"`
+		Title string           `xml:"title"`
+		Links []rssChannelLink `xml:"link"`
+		Items []rssItem        `xml:"item"`
 	} `xml:"channel"`
+}
+
+// rssChannelLink captures both the plain <link> and namespaced siblings such
+// as atom:link. A scalar field is skipped when namespaced links are present.
+type rssChannelLink struct {
+	Href  string `xml:"href,attr"`
+	Rel   string `xml:"rel,attr"`
+	Value string `xml:",chardata"`
 }
 
 type rssItem struct {
@@ -106,7 +116,10 @@ func parseRSS(data []byte) (*parsedFeed, error) {
 		return nil, fmt.Errorf("decoding RSS: %w", err)
 	}
 
-	feed := &parsedFeed{Title: cleanTitle(doc.Channel.Title)}
+	feed := &parsedFeed{
+		Title:   cleanTitle(doc.Channel.Title),
+		SiteURL: rssSiteURL(doc.Channel.Links),
+	}
 	for _, raw := range doc.Channel.Items {
 		item := FeedItem{
 			Title:     raw.Title,
@@ -155,6 +168,7 @@ func parseRSS(data []byte) (*parsedFeed, error) {
 
 type atomDocument struct {
 	Title   atomText    `xml:"http://www.w3.org/2005/Atom title"`
+	Links   []atomLink  `xml:"http://www.w3.org/2005/Atom link"`
 	Entries []atomEntry `xml:"http://www.w3.org/2005/Atom entry"`
 }
 
@@ -185,6 +199,54 @@ type atomText struct {
 	Inner string `xml:",innerxml"`
 }
 
+// rssSiteURL picks the channel's plain link, which points at the blog rather
+// than the feed. Namespaced atom:link elements are ignored unless no plain
+// link exists.
+func rssSiteURL(links []rssChannelLink) string {
+	for _, link := range links {
+		if link.Href == "" && strings.TrimSpace(link.Value) != "" {
+			return strings.TrimSpace(link.Value)
+		}
+	}
+	for _, link := range links {
+		if link.Rel == "alternate" && link.Href != "" {
+			return strings.TrimSpace(link.Href)
+		}
+	}
+	return ""
+}
+
+// atomSiteURL picks the feed's public HTML page, not its feed URL.
+func atomSiteURL(links []atomLink) string {
+	for _, link := range links {
+		if (link.Rel == "" || link.Rel == "alternate") && link.Href != "" {
+			return strings.TrimSpace(link.Href)
+		}
+	}
+	for _, link := range links {
+		if link.Rel == "self" && link.Href != "" {
+			return strings.TrimSpace(link.Href)
+		}
+	}
+	return ""
+}
+
+// feedDomain is the site a feed belongs to, for example bdsmlr.com even when
+// the feed itself is served from a mirror.
+func feedDomain(feed *parsedFeed, feedURL string) string {
+	for _, candidate := range []string{feed.SiteURL, feedURL} {
+		if candidate == "" {
+			continue
+		}
+		u, err := url.Parse(candidate)
+		if err != nil || u.Host == "" {
+			continue
+		}
+		return strings.TrimPrefix(strings.ToLower(u.Host), "www.")
+	}
+	return ""
+}
+
 func (t atomText) text() string {
 	if strings.TrimSpace(t.Value) != "" {
 		return t.Value
@@ -198,7 +260,10 @@ func parseAtom(data []byte) (*parsedFeed, error) {
 		return nil, fmt.Errorf("decoding Atom: %w", err)
 	}
 
-	feed := &parsedFeed{Title: cleanTitle(doc.Title.text())}
+	feed := &parsedFeed{
+		Title:   cleanTitle(doc.Title.text()),
+		SiteURL: atomSiteURL(doc.Links),
+	}
 	for _, raw := range doc.Entries {
 		item := FeedItem{
 			Title:     raw.Title.text(),

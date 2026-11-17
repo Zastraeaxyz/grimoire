@@ -17,6 +17,8 @@ func TestFeedLifecycle(t *testing.T) {
 		URL:       "https://example.com/feed.xml",
 		ChannelID: "channel-1",
 		Title:     "Example",
+		Domain:    "example.com",
+		AddedBy:   "user-1",
 	})
 	if err != nil {
 		t.Fatalf("CreateFeed: %v", err)
@@ -32,30 +34,34 @@ func TestFeedLifecycle(t *testing.T) {
 	if got.ID != id || got.ChannelID != "channel-1" || got.Title != "Example" {
 		t.Fatalf("unexpected feed: %+v", got)
 	}
+	if got.Domain != "example.com" || got.AddedBy != "user-1" {
+		t.Fatalf("identity not saved: %+v", got)
+	}
 	if time.Since(got.CreatedAt) > time.Minute {
 		t.Fatalf("unexpected created_at: %v", got.CreatedAt)
 	}
 
-	if err := st.UpdateFeedFetch(ctx, id, "Renamed", `"etag-1"`, "yesterday", ""); err != nil {
+	if err := st.UpdateFeedFetch(ctx, id, "Renamed", "example.org", `"etag-1"`, "yesterday", ""); err != nil {
 		t.Fatalf("UpdateFeedFetch: %v", err)
 	}
 	got, err = st.GetFeedByURL(ctx, "guild-1", "https://example.com/feed.xml")
 	if err != nil {
 		t.Fatalf("GetFeedByURL: %v", err)
 	}
-	if got.Title != "Renamed" || got.ETag != `"etag-1"` || got.LastModified != "yesterday" {
+	if got.Title != "Renamed" || got.Domain != "example.org" ||
+		got.ETag != `"etag-1"` || got.LastModified != "yesterday" {
 		t.Fatalf("fetch state not saved: %+v", got)
 	}
 	if got.LastCheckedAt.IsZero() {
 		t.Fatal("expected last_checked_at")
 	}
 
-	// An empty title must not erase the stored one.
-	if err := st.UpdateFeedFetch(ctx, id, "", "", "", "boom"); err != nil {
+	// Empty values must not erase the stored identity.
+	if err := st.UpdateFeedFetch(ctx, id, "", "", "", "", "boom"); err != nil {
 		t.Fatalf("UpdateFeedFetch: %v", err)
 	}
 	got, _ = st.GetFeedByURL(ctx, "guild-1", "https://example.com/feed.xml")
-	if got.Title != "Renamed" || got.LastError != "boom" {
+	if got.Title != "Renamed" || got.Domain != "example.org" || got.LastError != "boom" {
 		t.Fatalf("empty values overwrote state: %+v", got)
 	}
 
@@ -251,7 +257,83 @@ func TestOpenMigratesVersionOneDatabase(t *testing.T) {
 	defer st.Close()
 
 	ctx := context.Background()
-	if _, err := st.CreateFeed(ctx, &Feed{GuildID: "guild-1", URL: "https://example.com/feed", ChannelID: "channel-1"}); err != nil {
+	feed := &Feed{
+		GuildID:   "guild-1",
+		URL:       "https://example.com/feed",
+		ChannelID: "channel-1",
+		Domain:    "example.com",
+		AddedBy:   "user-1",
+	}
+	if _, err := st.CreateFeed(ctx, feed); err != nil {
 		t.Fatalf("feeds table missing after migration: %v", err)
+	}
+}
+
+// TestOpenMigratesVersionTwoDatabase covers the deployed v2 schema, whose
+// feeds table predates the domain and added_by columns.
+func TestOpenMigratesVersionTwoDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grimoire.db")
+
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	stmts := []string{
+		`CREATE TABLE feeds (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			guild_id TEXT NOT NULL,
+			url TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
+			etag TEXT NOT NULL DEFAULT '',
+			last_modified TEXT NOT NULL DEFAULT '',
+			last_checked_at INTEGER,
+			last_error TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			UNIQUE (guild_id, url)
+		)`,
+		`CREATE TABLE feed_items (
+			feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+			guid TEXT NOT NULL,
+			message_id TEXT NOT NULL DEFAULT '',
+			seen_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			PRIMARY KEY (feed_id, guid)
+		)`,
+		`INSERT INTO feeds (guild_id, url, channel_id, title)
+			VALUES ('guild-1', 'https://example.com/old', 'channel-1', 'Old')`,
+		`PRAGMA user_version = 2`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("preparing v2 database: %v", err)
+		}
+	}
+	db.Close()
+
+	st, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	ctx := context.Background()
+	old, err := st.GetFeedByURL(ctx, "guild-1", "https://example.com/old")
+	if err != nil {
+		t.Fatalf("GetFeedByURL: %v", err)
+	}
+	if old == nil || old.Title != "Old" || old.Domain != "" || old.AddedBy != "" {
+		t.Fatalf("existing feed changed unexpectedly: %+v", old)
+	}
+
+	feed := &Feed{
+		GuildID:   "guild-1",
+		URL:       "https://example.com/new",
+		ChannelID: "channel-1",
+		Title:     "New",
+		Domain:    "example.com",
+		AddedBy:   "user-1",
+	}
+	if _, err := st.CreateFeed(ctx, feed); err != nil {
+		t.Fatalf("CreateFeed after migration: %v", err)
 	}
 }

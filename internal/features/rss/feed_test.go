@@ -12,6 +12,7 @@ const bdsmlrFixture = `<?xml version="1.0" encoding="UTF-8"?>
      xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
     <title><![CDATA[Zastraea]]></title>
+    <link>https://bdsmlr.com/blog/zastraeachastity</link>
     <item>
       <title><![CDATA[Post 877982930]]></title>
       <description><![CDATA[<p><br></p>
@@ -54,6 +55,7 @@ const imaglrFixture = `<?xml version="1.0" encoding="UTF-8"?>
      xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>Imaglr - zastraea&apos;s Profile</title>
+    <link>https://imaglr.com/profile/zastraea</link>
     <item>
       <title>zastraea - image</title>
       <link>https://imaglr.com/post/109448475</link>
@@ -88,6 +90,7 @@ const imaglrFixture = `<?xml version="1.0" encoding="UTF-8"?>
 const atomFixture = `<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Example blog</title>
+  <link rel="alternate" href="https://example.com/"/>
   <entry>
     <id>tag:example.com,2026:post-1</id>
     <title>A readable post</title>
@@ -107,6 +110,12 @@ func TestParseRSSMediaAndDedupe(t *testing.T) {
 	}
 	if feed.Title != "Zastraea" {
 		t.Fatalf("title = %q", feed.Title)
+	}
+	if feed.SiteURL != "https://bdsmlr.com/blog/zastraeachastity" {
+		t.Fatalf("site URL = %q", feed.SiteURL)
+	}
+	if domain := feedDomain(feed, "https://bdsmlr.zastraea.xyz/zastraeachastity/rss"); domain != "bdsmlr.com" {
+		t.Fatalf("domain = %q, want bdsmlr.com", domain)
 	}
 	if len(feed.Items) != 3 {
 		t.Fatalf("items = %d, want 3", len(feed.Items))
@@ -151,6 +160,9 @@ func TestParseImaglrTruncatedVideo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseFeed: %v", err)
 	}
+	if domain := feedDomain(feed, "https://imaglr.com/profile/zastraea/rss"); domain != "imaglr.com" {
+		t.Fatalf("domain = %q, want imaglr.com", domain)
+	}
 
 	image := feed.Items[0]
 	if len(image.Media) != 1 {
@@ -185,6 +197,9 @@ func TestParseAtom(t *testing.T) {
 	}
 	if feed.Title != "Example blog" {
 		t.Fatalf("title = %q", feed.Title)
+	}
+	if feed.SiteURL != "https://example.com/" {
+		t.Fatalf("site URL = %q", feed.SiteURL)
 	}
 	if len(feed.Items) != 1 {
 		t.Fatalf("items = %d", len(feed.Items))
@@ -227,6 +242,44 @@ func TestNormalizeMediaURL(t *testing.T) {
 		if got := normalizeMediaURL(base, input); got != want {
 			t.Errorf("normalizeMediaURL(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestFeedDomain(t *testing.T) {
+	cases := []struct {
+		name    string
+		siteURL string
+		feedURL string
+		want    string
+	}{
+		{
+			name:    "site link wins over mirror",
+			siteURL: "https://bdsmlr.com/blog/zastraeachastity",
+			feedURL: "https://bdsmlr.zastraea.xyz/zastraeachastity/rss",
+			want:    "bdsmlr.com",
+		},
+		{
+			name:    "www is stripped",
+			siteURL: "https://www.imaglr.com/profile/zastraea",
+			want:    "imaglr.com",
+		},
+		{
+			name:    "falls back to feed host",
+			feedURL: "https://Example.com/feed.xml",
+			want:    "example.com",
+		},
+		{
+			name: "no URLs",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := feedDomain(&parsedFeed{SiteURL: tc.siteURL}, tc.feedURL)
+			if got != tc.want {
+				t.Fatalf("feedDomain = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

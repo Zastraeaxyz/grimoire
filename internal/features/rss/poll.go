@@ -50,13 +50,20 @@ func (f *Feature) pollFeed(parent context.Context, s *discordgo.Session, feed *s
 	ctx, cancel := context.WithTimeout(parent, feedTimeout)
 	defer cancel()
 
-	result, err := f.fetchFeed(ctx, feed.URL, feed.ETag, feed.LastModified)
+	// Feeds created before the domain column existed need one unconditional
+	// fetch so their site can be identified.
+	etag, lastModified := feed.ETag, feed.LastModified
+	if feed.Domain == "" {
+		etag, lastModified = "", ""
+	}
+
+	result, err := f.fetchFeed(ctx, feed.URL, etag, lastModified)
 	if err != nil {
 		f.recordFetchError(feed, err)
 		return 0, err
 	}
 	if result.NotModified {
-		return 0, f.store.UpdateFeedFetch(ctx, feed.ID, "", "", "", "")
+		return 0, f.store.UpdateFeedFetch(ctx, feed.ID, "", "", "", "", "")
 	}
 
 	parsed, err := parseFeed(result.Body)
@@ -64,11 +71,15 @@ func (f *Feature) pollFeed(parent context.Context, s *discordgo.Session, feed *s
 		f.recordFetchError(feed, fmt.Errorf("parsing feed: %w", err))
 		return 0, err
 	}
-	if err := f.store.UpdateFeedFetch(ctx, feed.ID, parsed.Title, result.ETag, result.LastModified, ""); err != nil {
+	domain := feedDomain(parsed, feed.URL)
+	if err := f.store.UpdateFeedFetch(ctx, feed.ID, parsed.Title, domain, result.ETag, result.LastModified, ""); err != nil {
 		f.log.Warn("saving feed state", "feed_id", feed.ID, "err", err)
 	}
 	if parsed.Title != "" {
 		feed.Title = parsed.Title
+	}
+	if domain != "" {
+		feed.Domain = domain
 	}
 
 	seen, err := f.store.SeenItemIDs(ctx, feed.ID)
@@ -146,7 +157,7 @@ func (f *Feature) postItem(ctx context.Context, s *discordgo.Session, feed *stor
 func (f *Feature) recordFetchError(feed *store.Feed, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if updateErr := f.store.UpdateFeedFetch(ctx, feed.ID, "", "", "", err.Error()); updateErr != nil {
+	if updateErr := f.store.UpdateFeedFetch(ctx, feed.ID, "", "", "", "", err.Error()); updateErr != nil {
 		f.log.Warn("recording feed error", "feed_id", feed.ID, "err", updateErr)
 	}
 }

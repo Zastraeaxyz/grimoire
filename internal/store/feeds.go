@@ -15,6 +15,8 @@ type Feed struct {
 	URL           string
 	ChannelID     string
 	Title         string
+	Domain        string
+	AddedBy       string
 	ETag          string
 	LastModified  string
 	LastCheckedAt time.Time
@@ -25,9 +27,9 @@ type Feed struct {
 // CreateFeed inserts a feed and returns its id.
 func (s *Store) CreateFeed(ctx context.Context, f *Feed) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO feeds (guild_id, url, channel_id, title)
-		VALUES (?, ?, ?, ?)`,
-		f.GuildID, f.URL, f.ChannelID, f.Title)
+		INSERT INTO feeds (guild_id, url, channel_id, title, domain, added_by)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		f.GuildID, f.URL, f.ChannelID, f.Title, f.Domain, f.AddedBy)
 	if err != nil {
 		return 0, err
 	}
@@ -38,8 +40,8 @@ func (s *Store) CreateFeed(ctx context.Context, f *Feed) (int64, error) {
 // URL is not followed yet. Used to keep a URL from being added twice.
 func (s *Store) GetFeedByURL(ctx context.Context, guildID, url string) (*Feed, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, guild_id, url, channel_id, title, etag, last_modified,
-		       last_checked_at, last_error, created_at
+		SELECT id, guild_id, url, channel_id, title, domain, added_by,
+		       etag, last_modified, last_checked_at, last_error, created_at
 		FROM feeds
 		WHERE guild_id = ? AND url = ?`, guildID, url)
 	return scanFeed(row)
@@ -48,8 +50,8 @@ func (s *Store) GetFeedByURL(ctx context.Context, guildID, url string) (*Feed, e
 // ListFeeds returns every feed for a guild, oldest first.
 func (s *Store) ListFeeds(ctx context.Context, guildID string) ([]Feed, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, guild_id, url, channel_id, title, etag, last_modified,
-		       last_checked_at, last_error, created_at
+		SELECT id, guild_id, url, channel_id, title, domain, added_by,
+		       etag, last_modified, last_checked_at, last_error, created_at
 		FROM feeds
 		WHERE guild_id = ?
 		ORDER BY id`, guildID)
@@ -88,17 +90,20 @@ func (s *Store) DeleteFeed(ctx context.Context, guildID string, id int64) error 
 }
 
 // UpdateFeedFetch records a completed poll. Empty values leave the stored
-// validators and title untouched, so a failed parse cannot erase them.
-func (s *Store) UpdateFeedFetch(ctx context.Context, id int64, title, etag, lastModified, fetchErr string) error {
+// validators, title, and domain untouched, so a failed parse cannot erase
+// them.
+func (s *Store) UpdateFeedFetch(ctx context.Context, id int64, title, domain, etag, lastModified, fetchErr string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE feeds
 		SET title = CASE WHEN ? <> '' THEN ? ELSE title END,
+		    domain = CASE WHEN ? <> '' THEN ? ELSE domain END,
 		    etag = CASE WHEN ? <> '' THEN ? ELSE etag END,
 		    last_modified = CASE WHEN ? <> '' THEN ? ELSE last_modified END,
 		    last_checked_at = unixepoch(),
 		    last_error = ?
 		WHERE id = ?`,
 		title, title,
+		domain, domain,
 		etag, etag,
 		lastModified, lastModified,
 		fetchErr, id)
@@ -168,7 +173,8 @@ func scanFeed(row rowScanner) (*Feed, error) {
 	)
 	err := row.Scan(
 		&f.ID, &f.GuildID, &f.URL, &f.ChannelID, &f.Title,
-		&f.ETag, &f.LastModified, &checkedAt, &f.LastError, &createdAt,
+		&f.Domain, &f.AddedBy, &f.ETag, &f.LastModified,
+		&checkedAt, &f.LastError, &createdAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

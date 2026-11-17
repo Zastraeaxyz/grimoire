@@ -203,6 +203,8 @@ func (f *Feature) add(ctx context.Context, s *discordgo.Session, i *discordgo.In
 		URL:       feedURL,
 		ChannelID: channelID,
 		Title:     parsed.Title,
+		Domain:    feedDomain(parsed, feedURL),
+		AddedBy:   addedByUserID(i),
 	}
 	id, err := f.store.CreateFeed(ctx, feed)
 	if err != nil {
@@ -210,7 +212,7 @@ func (f *Feature) add(ctx context.Context, s *discordgo.Session, i *discordgo.In
 	}
 	feed.ID = id
 
-	if err := f.store.UpdateFeedFetch(ctx, id, parsed.Title, result.ETag, result.LastModified, ""); err != nil {
+	if err := f.store.UpdateFeedFetch(ctx, id, parsed.Title, feed.Domain, result.ETag, result.LastModified, ""); err != nil {
 		f.log.Warn("saving feed fetch state", "feed_id", id, "err", err)
 	}
 
@@ -228,13 +230,18 @@ func (f *Feature) add(ctx context.Context, s *discordgo.Session, i *discordgo.In
 		"feed_id", id,
 		"url", feedURL,
 		"channel_id", channelID,
+		"domain", feed.Domain,
+		"added_by", feed.AddedBy,
 		"items", len(parsed.Items),
 		"backfilled", posted,
 	)
 
 	var reply strings.Builder
-	name := feedDisplayName(feed)
-	fmt.Fprintf(&reply, "Following **%s** in <#%s>.\n", name, channelID)
+	fmt.Fprintf(&reply, "Following **%s**", feedDisplayName(feed))
+	if feed.Domain != "" {
+		fmt.Fprintf(&reply, " on %s", feed.Domain)
+	}
+	fmt.Fprintf(&reply, " in <#%s>.\n", channelID)
 	if posted > 0 {
 		fmt.Fprintf(&reply, "Posted %d recent item", posted)
 		if posted != 1 {
@@ -322,8 +329,8 @@ func (f *Feature) remove(ctx context.Context, s *discordgo.Session, i *discordgo
 	}
 	f.log.Info("feed removed", "feed_id", feedID, "url", target.URL)
 	return bot.EditEphemeral(s, i, fmt.Sprintf(
-		"Stopped following **%s**. Messages already posted stay in <#%s>.",
-		feedDisplayName(target), target.ChannelID,
+		"Stopped following **%s**%s. Messages already posted stay in <#%s>.",
+		feedDisplayName(target), domainSuffix(target), target.ChannelID,
 	))
 }
 
@@ -339,8 +346,8 @@ func (f *Feature) list(ctx context.Context, s *discordgo.Session, i *discordgo.I
 	var out strings.Builder
 	fmt.Fprintf(&out, "**Feeds (%d)**\n", len(feeds))
 	for _, feed := range feeds {
-		fmt.Fprintf(&out, "\n`#%d` **%s** → <#%s>\n%s\n",
-			feed.ID, feedDisplayName(&feed), feed.ChannelID, feed.URL)
+		fmt.Fprintf(&out, "\n`#%d` **%s**%s → <#%s>\n%s\n",
+			feed.ID, feedDisplayName(&feed), domainSuffix(&feed), feed.ChannelID, feed.URL)
 		fmt.Fprintf(&out, "Last checked %s.", humanAgo(feed.LastCheckedAt))
 		if feed.LastError != "" {
 			fmt.Fprintf(&out, " Last error: %s", feed.LastError)
@@ -436,7 +443,7 @@ func (f *Feature) handleAutocomplete(ctx context.Context, s *discordgo.Session, 
 		if ch, err := s.State.Channel(feed.ChannelID); err == nil && ch.Name != "" {
 			channelName = ch.Name
 		}
-		label := fmt.Sprintf("#%d %s -> #%s", feed.ID, feedDisplayName(&feed), channelName)
+		label := fmt.Sprintf("#%d %s -> #%s", feed.ID, feedLabel(&feed), channelName)
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  truncateText(label, 96),
 			Value: feed.ID,
@@ -491,6 +498,14 @@ func normalizeFeedURL(raw string) (string, error) {
 	u.Scheme = strings.ToLower(u.Scheme)
 	u.Host = strings.ToLower(u.Host)
 	return u.String(), nil
+}
+
+// addedByUserID records who configured a feed, for future auditing.
+func addedByUserID(i *discordgo.InteractionCreate) string {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID
+	}
+	return ""
 }
 
 func humanAgo(t time.Time) string {

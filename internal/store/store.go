@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 // Store is the SQLite-backed persistence layer.
 type Store struct {
@@ -80,50 +80,79 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	}
 	defer tx.Rollback()
 
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS guild_settings (
-			guild_id TEXT PRIMARY KEY,
-			welcome_channel_id TEXT NOT NULL DEFAULT '',
-			base_role_id TEXT NOT NULL DEFAULT '',
-			rules_channel_id TEXT NOT NULL DEFAULT '',
-			panel_message_id TEXT NOT NULL DEFAULT '',
-			panel_body TEXT NOT NULL DEFAULT '',
-			updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-		)`,
-		`CREATE TABLE IF NOT EXISTS acknowledgements (
-			guild_id TEXT NOT NULL,
-			user_id TEXT NOT NULL,
-			acknowledged_at INTEGER NOT NULL DEFAULT (unixepoch()),
-			PRIMARY KEY (guild_id, user_id)
-		)`,
-		`CREATE TABLE IF NOT EXISTS feeds (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			guild_id TEXT NOT NULL,
-			url TEXT NOT NULL,
-			channel_id TEXT NOT NULL,
-			title TEXT NOT NULL DEFAULT '',
-			etag TEXT NOT NULL DEFAULT '',
-			last_modified TEXT NOT NULL DEFAULT '',
-			last_checked_at INTEGER,
-			last_error TEXT NOT NULL DEFAULT '',
-			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-			UNIQUE (guild_id, url)
-		)`,
-		`CREATE TABLE IF NOT EXISTS feed_items (
-			feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
-			guid TEXT NOT NULL,
-			message_id TEXT NOT NULL DEFAULT '',
-			seen_at INTEGER NOT NULL DEFAULT (unixepoch()),
-			PRIMARY KEY (feed_id, guid)
-		)`,
-		`CREATE INDEX IF NOT EXISTS feed_items_seen_at
-			ON feed_items (feed_id, seen_at)`,
+	// Each step applies only once. Columns added later use ALTER TABLE, so
+	// existing installs upgrade in place without a fresh database file.
+	steps := []struct {
+		version    int
+		statements []string
+	}{
+		{
+			version: 1,
+			statements: []string{
+				`CREATE TABLE IF NOT EXISTS guild_settings (
+					guild_id TEXT PRIMARY KEY,
+					welcome_channel_id TEXT NOT NULL DEFAULT '',
+					base_role_id TEXT NOT NULL DEFAULT '',
+					rules_channel_id TEXT NOT NULL DEFAULT '',
+					panel_message_id TEXT NOT NULL DEFAULT '',
+					panel_body TEXT NOT NULL DEFAULT '',
+					updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+				)`,
+				`CREATE TABLE IF NOT EXISTS acknowledgements (
+					guild_id TEXT NOT NULL,
+					user_id TEXT NOT NULL,
+					acknowledged_at INTEGER NOT NULL DEFAULT (unixepoch()),
+					PRIMARY KEY (guild_id, user_id)
+				)`,
+			},
+		},
+		{
+			version: 2,
+			statements: []string{
+				`CREATE TABLE IF NOT EXISTS feeds (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					guild_id TEXT NOT NULL,
+					url TEXT NOT NULL,
+					channel_id TEXT NOT NULL,
+					title TEXT NOT NULL DEFAULT '',
+					etag TEXT NOT NULL DEFAULT '',
+					last_modified TEXT NOT NULL DEFAULT '',
+					last_checked_at INTEGER,
+					last_error TEXT NOT NULL DEFAULT '',
+					created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+					UNIQUE (guild_id, url)
+				)`,
+				`CREATE TABLE IF NOT EXISTS feed_items (
+					feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+					guid TEXT NOT NULL,
+					message_id TEXT NOT NULL DEFAULT '',
+					seen_at INTEGER NOT NULL DEFAULT (unixepoch()),
+					PRIMARY KEY (feed_id, guid)
+				)`,
+				`CREATE INDEX IF NOT EXISTS feed_items_seen_at
+					ON feed_items (feed_id, seen_at)`,
+			},
+		},
+		{
+			version: 3,
+			statements: []string{
+				`ALTER TABLE feeds ADD COLUMN domain TEXT NOT NULL DEFAULT ''`,
+				`ALTER TABLE feeds ADD COLUMN added_by TEXT NOT NULL DEFAULT ''`,
+			},
+		},
 	}
-	for _, stmt := range statements {
-		if _, err := tx.ExecContext(ctx, stmt); err != nil {
-			return err
+
+	for _, step := range steps {
+		if version >= step.version {
+			continue
+		}
+		for _, stmt := range step.statements {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("migration %d: %w", step.version, err)
+			}
 		}
 	}
+
 	// user_version cannot be parameterized, and schemaVersion is a constant.
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return err

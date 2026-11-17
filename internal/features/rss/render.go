@@ -76,6 +76,19 @@ func feedDisplayName(feed *store.Feed) string {
 	return truncateText(name, embedAuthorLimit)
 }
 
+// domainSuffix returns " on example.com" for lists and replies.
+func domainSuffix(feed *store.Feed) string {
+	if feed.Domain == "" {
+		return ""
+	}
+	return " on " + feed.Domain
+}
+
+// feedLabel identifies a feed as username plus site.
+func feedLabel(feed *store.Feed) string {
+	return feedDisplayName(feed) + domainSuffix(feed)
+}
+
 // cleanFeedTitle shortens profile-style feed titles such as
 // "Imaglr - zastraea's Profile" to the person's name.
 func cleanFeedTitle(raw string) string {
