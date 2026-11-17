@@ -379,9 +379,21 @@ func (f *Feature) fetchReddit(ctx context.Context, target redditTarget) (*parsed
 	if err != nil {
 		return nil, err
 	}
+	if len(feed.Items) == 0 && isRedditAgeGate(body) {
+		return nil, errors.New("this reddit feed is age-restricted: set REDDIT_INCLUDE_NSFW=true to follow it")
+	}
 	feed.Title = target.Title
 	feed.SiteURL = target.HomeURL
 	return feed, nil
+}
+
+// isRedditAgeGate recognizes the consent page reddit serves for NSFW
+// communities when the over18 cookie is absent.
+func isRedditAgeGate(body []byte) bool {
+	s := strings.ToLower(string(body))
+	return strings.Contains(s, "over18-gate") ||
+		strings.Contains(s, "<title>over 18</title>") ||
+		strings.Contains(s, "are you over 18")
 }
 
 // parseRedditListing extracts the posts from an old.reddit listing page in

@@ -307,6 +307,28 @@ func TestFetchRedditLoginWall(t *testing.T) {
 	}
 }
 
+func TestFetchRedditAgeGate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `<html><head><title>over 18</title></head><body><div class="over18-gate">Are you over 18?</div></body></html>`)
+	}))
+	defer server.Close()
+
+	restore := redditBase
+	redditBase = server.URL
+	t.Cleanup(func() { redditBase = restore })
+
+	f := testFeature()
+	f.redditSession = "abc"
+	f.redditUserAgent = defaultRedditUserAgent
+	f.redditIncludeNSFW = false
+
+	target, _ := redditTargetFor("https://www.reddit.com/r/golang")
+	_, err := f.fetchReddit(context.Background(), target)
+	if err == nil || !strings.Contains(err.Error(), "REDDIT_INCLUDE_NSFW") {
+		t.Fatalf("err = %v, want an NSFW hint", err)
+	}
+}
+
 func TestFetchRedditStatusErrors(t *testing.T) {
 	cases := []struct {
 		status int
