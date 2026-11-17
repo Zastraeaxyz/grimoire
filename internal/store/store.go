@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 // Store is the SQLite-backed persistence layer.
 type Store struct {
@@ -40,7 +40,7 @@ func Open(path string) (*Store, error) {
 	}
 
 	dsn := fmt.Sprintf(
-		"file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)",
+		"file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)",
 		path,
 	)
 	db, err := sql.Open("sqlite", dsn)
@@ -96,6 +96,28 @@ func migrate(ctx context.Context, db *sql.DB) error {
 			acknowledged_at INTEGER NOT NULL DEFAULT (unixepoch()),
 			PRIMARY KEY (guild_id, user_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS feeds (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			guild_id TEXT NOT NULL,
+			url TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
+			etag TEXT NOT NULL DEFAULT '',
+			last_modified TEXT NOT NULL DEFAULT '',
+			last_checked_at INTEGER,
+			last_error TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			UNIQUE (guild_id, url)
+		)`,
+		`CREATE TABLE IF NOT EXISTS feed_items (
+			feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+			guid TEXT NOT NULL,
+			message_id TEXT NOT NULL DEFAULT '',
+			seen_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			PRIMARY KEY (feed_id, guid)
+		)`,
+		`CREATE INDEX IF NOT EXISTS feed_items_seen_at
+			ON feed_items (feed_id, seen_at)`,
 	}
 	for _, stmt := range statements {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
