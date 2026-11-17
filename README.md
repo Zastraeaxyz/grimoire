@@ -21,8 +21,9 @@ Discord bot for the zxyz server, built on
   original GIF that now exists only as an MP4.
 - **Reddit feeds**: reddit retired its `.rss` endpoints, so `/rss add` also
   accepts subreddit and user URLs and reads their newest-first listing
-  directly. Every Reddit post gets a **Load full post** button that fetches the
-  complete gallery or video on demand. See [Reddit feeds](#reddit-feeds).
+  directly. Every Reddit post gets a **Load full post** or **Load gallery**
+  button that fetches the complete gallery or video on demand, then removes
+  the placeholder post. See [Reddit feeds](#reddit-feeds).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -70,12 +71,15 @@ rejected.
 be followed. It sends Reddit's `over18` cookie and `include_over_18=on`.
 Turn it off to keep the bot out of NSFW listings entirely.
 
-The first post shows what the listing carries: the full image for image posts,
-the cover for galleries, and a still frame for videos and link posts. Press
-**Load full post** to fetch the post's detail and re-upload every gallery image
-or the video's MP4. The button is available to every member, and it disables
-itself after a successful load. Reddit's MP4 fallback is video-only, so loaded
-videos have no audio.
+Every Reddit card names the poster as `u/<name>` in its footer. The first post
+shows what the listing carries: the full image for image posts, the cover for
+galleries, and a still frame for videos and link posts. Gallery posts are
+labelled **Gallery** in the footer and get a **Load gallery** button instead of
+**Load full post**. Press the button to fetch the post's detail and re-upload
+every gallery image or the video's MP4. The button is available to every
+member; after a successful load the bot removes the original post, so the
+channel keeps only the complete one. Reddit's MP4 fallback is video-only, so
+loaded videos have no audio.
 
 Commands are limited to server admins for now: members need **Manage Server**
 or **Administrator**. The welcome confirmation button stays open to every
