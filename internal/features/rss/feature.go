@@ -518,7 +518,7 @@ func normalizeFeedURL(raw string) (string, error) {
 	if isRedditHost(u.Hostname()) {
 		target, ok := redditTargetFromURL(u)
 		if !ok {
-			return "", errors.New("That Reddit URL is not a subreddit or user feed. Use https://www.reddit.com/r/cats or https://www.reddit.com/user/name.")
+			return "", errors.New("That Reddit URL is not a subreddit, user, or search feed. Use https://www.reddit.com/r/cats, https://www.reddit.com/user/name, or https://www.reddit.com/search?q=cats.")
 		}
 		return target.FeedURL, nil
 	}

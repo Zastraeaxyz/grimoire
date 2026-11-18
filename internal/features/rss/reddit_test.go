@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -66,7 +67,6 @@ func TestRedditTarget(t *testing.T) {
 		{"https://www.reddit.com/u/sam/submitted.rss", true, "u", "sam", "https://www.reddit.com/user/sam", "https://www.reddit.com/user/sam"},
 		{"https://old.reddit.com/user/sam/submitted/?sort=new", true, "u", "sam", "https://www.reddit.com/user/sam", "https://www.reddit.com/user/sam"},
 		{"https://www.reddit.com/r/cats/comments/abc/x/", false, "", "", "", ""},
-		{"https://www.reddit.com/r/cats/search?q=x", false, "", "", "", ""},
 		{"https://www.reddit.com/", false, "", "", "", ""},
 		{"https://example.com/r/cats", false, "", "", "", ""},
 	}
@@ -176,7 +176,6 @@ func TestNormalizeFeedURLReddit(t *testing.T) {
 
 	for _, input := range []string{
 		"https://www.reddit.com/r/cats/comments/abc/x/",
-		"https://www.reddit.com/r/cats/search?q=x",
 		"https://www.reddit.com/",
 	} {
 		if _, err := normalizeFeedURL(input); err == nil {
@@ -483,6 +482,236 @@ func TestRedditPostIDFromCustomID(t *testing.T) {
 		if !ok || got != want {
 			t.Errorf("redditPostIDFromCustomID(%q) = %q, %v, want %q", input, got, ok, want)
 		}
+	}
+}
+
+func TestRedditSearchTarget(t *testing.T) {
+	raw := "https://old.reddit.com/search/?q=author%3AZinguBing+subreddit%3AFemdomOralCaptions+subreddit%3Akeyholdercaptions+subreddit%3Acuckoldcaptions&include_over_18=on&t=all&sort=new"
+	target, ok := redditTargetFor(raw)
+	if !ok {
+		t.Fatalf("redditTargetFor(%q) did not resolve", raw)
+	}
+	if target.Kind != "search" {
+		t.Fatalf("kind = %q", target.Kind)
+	}
+	if target.HomeURL != redditWebBase {
+		t.Errorf("home = %q", target.HomeURL)
+	}
+	if !strings.HasPrefix(target.Title, "search: author:ZinguBing") {
+		t.Errorf("title = %q", target.Title)
+	}
+
+	u, err := url.Parse(target.FeedURL)
+	if err != nil {
+		t.Fatalf("parse feed URL: %v", err)
+	}
+	if u.Host != "old.reddit.com" || u.Path != "/search" {
+		t.Errorf("feed URL = %q", target.FeedURL)
+	}
+	query := u.Query()
+	wantQuery := "author:ZinguBing subreddit:FemdomOralCaptions subreddit:keyholdercaptions subreddit:cuckoldcaptions"
+	if got := query.Get("q"); got != wantQuery {
+		t.Errorf("q = %q, want %q", got, wantQuery)
+	}
+	if query.Get("sort") != "new" || query.Get("t") != "all" {
+		t.Errorf("sort/time = %q/%q", query.Get("sort"), query.Get("t"))
+	}
+	if query.Get("include_over_18") != "on" {
+		t.Errorf("include_over_18 = %q", query.Get("include_over_18"))
+	}
+
+	normalized, err := normalizeFeedURL(raw)
+	if err != nil {
+		t.Fatalf("normalizeFeedURL: %v", err)
+	}
+	if normalized != target.FeedURL {
+		t.Errorf("normalizeFeedURL = %q, want %q", normalized, target.FeedURL)
+	}
+}
+
+func TestRedditSearchTargetScopesAndDropsCursors(t *testing.T) {
+	target, ok := redditTargetFor("https://www.reddit.com/r/FemdomOralCaptions/search?q=cats&restrict_sr=on&sort=top&t=week&after=t3_x&count=25")
+	if !ok {
+		t.Fatal("search did not resolve")
+	}
+	u, err := url.Parse(target.FeedURL)
+	if err != nil {
+		t.Fatalf("parse feed URL: %v", err)
+	}
+	query := u.Query()
+	if got := query.Get("q"); got != "subreddit:FemdomOralCaptions cats" {
+		t.Errorf("q = %q", got)
+	}
+	for _, key := range []string{"restrict_sr", "after", "count"} {
+		if query.Get(key) != "" {
+			t.Errorf("%s should be dropped: %q", key, query.Get(key))
+		}
+	}
+	if query.Get("sort") != "new" || query.Get("t") != "all" {
+		t.Errorf("sort/time = %q/%q", query.Get("sort"), query.Get("t"))
+	}
+
+	again, ok := redditTargetFor("https://old.reddit.com/r/FemdomOralCaptions/search?q=subreddit%3Afemdomoralcaptions+cats")
+	if !ok {
+		t.Fatal("repeat search did not resolve")
+	}
+	againURL, _ := url.Parse(again.FeedURL)
+	if got := againURL.Query().Get("q"); got != "subreddit:femdomoralcaptions cats" {
+		t.Errorf("subreddit token was duplicated: %q", got)
+	}
+}
+
+func TestRedditSearchTargetRejectsEmptyQuery(t *testing.T) {
+	for _, raw := range []string{
+		"https://www.reddit.com/search",
+		"https://www.reddit.com/search?q=",
+	} {
+		if target, ok := redditTargetFor(raw); ok {
+			t.Errorf("redditTargetFor(%q) = %+v, want rejected", raw, target)
+		}
+		if _, err := normalizeFeedURL(raw); err == nil {
+			t.Errorf("normalizeFeedURL(%q) unexpectedly succeeded", raw)
+		}
+	}
+}
+
+func TestRedditSearchListingURL(t *testing.T) {
+	target, ok := redditTargetFor("https://www.reddit.com/search?q=cats")
+	if !ok {
+		t.Fatal("search did not resolve")
+	}
+
+	nsfw := redditListingURL(target, true)
+	if !strings.Contains(nsfw, "include_over_18=on") {
+		t.Errorf("NSFW listing = %q", nsfw)
+	}
+	if !strings.Contains(nsfw, "sort=new") || !strings.Contains(nsfw, "t=all") {
+		t.Errorf("listing is not newest-first: %q", nsfw)
+	}
+
+	plain := redditListingURL(target, false)
+	if strings.Contains(plain, "include_over_18") {
+		t.Errorf("NSFW should be optional: %q", plain)
+	}
+
+	offTarget, ok := redditTargetFor("https://www.reddit.com/search?q=cats&include_over_18=off")
+	if !ok {
+		t.Fatal("explicit NSFW search did not resolve")
+	}
+	if got := redditListingURL(offTarget, true); !strings.Contains(got, "include_over_18=off") {
+		t.Errorf("the URL should win over the config: %q", got)
+	}
+}
+
+const redditSearchFixture = `<!doctype html><html><body>
+<div class="search-result search-result-link" data-fullname="t3_s1" data-author="alice" data-subreddit="golang" data-permalink="/r/golang/comments/s1/self_title/" data-timestamp="1700000001000">
+  <p class="search-title"><a class="search-title" href="/r/golang/comments/s1/self_title/">Self title</a></p>
+  <span class="search-author">submitted by <a href="/user/alice">alice</a></span>
+  <time datetime="2026-11-16T08:46:37+00:00">then</time>
+  <div class="search-result-footer"><a href="https://www.reddit.com/r/golang/comments/s1/self_title/">1 comment</a></div>
+</div>
+<div class="search-result search-result-link" data-fullname="t3_s2" data-permalink="/r/pics/comments/s2/pic/" data-timestamp="1700000002">
+  <p class="search-title"><a class="search-title" href="https://i.redd.it/pic2.jpeg">Pic</a></p>
+  <span class="search-author"><a href="/user/bob">bob</a></span>
+  <div class="search-result-footer"><a href="https://i.redd.it/pic2.jpeg">[link]</a></div>
+</div>
+<div class="search-result search-result-link" data-fullname="t3_s3" data-permalink="/r/pics/comments/s3/gallery/" data-timestamp="1700000003">
+  <p class="search-title"><a class="search-title" href="https://www.reddit.com/gallery/s3">Gallery</a></p>
+  <span class="search-author"><a href="/user/carol">carol</a></span>
+  <a href="https://www.reddit.com/gallery/s3"><img src="//preview.redd.it/cover3.jpeg?width=140&amp;s=sig"></a>
+  <div class="search-result-footer"><a href="https://www.reddit.com/gallery/s3">gallery</a></div>
+</div>
+</body></html>`
+
+func TestParseRedditSearch(t *testing.T) {
+	feed, err := parseRedditSearch([]byte(redditSearchFixture))
+	if err != nil {
+		t.Fatalf("parseRedditSearch: %v", err)
+	}
+	if len(feed.Items) != 3 {
+		t.Fatalf("items = %d, want 3", len(feed.Items))
+	}
+
+	self := feed.Items[0]
+	if self.GUID != "t3_s1" || self.Title != "Self title" {
+		t.Errorf("self = %+v", self)
+	}
+	if self.Link != "https://www.reddit.com/r/golang/comments/s1/self_title/" {
+		t.Errorf("self link = %q", self.Link)
+	}
+	if self.Author != "alice" {
+		t.Errorf("self author = %q", self.Author)
+	}
+	if len(self.Media) != 0 {
+		t.Errorf("self media = %+v", self.Media)
+	}
+	if !self.Published.Equal(time.Date(2026, 11, 16, 8, 46, 37, 0, time.UTC)) {
+		t.Errorf("self published = %v", self.Published)
+	}
+	if !self.Reddit || self.Gallery {
+		t.Errorf("self flags = %v/%v", self.Reddit, self.Gallery)
+	}
+
+	image := feed.Items[1]
+	if image.Author != "bob" {
+		t.Errorf("image author = %q", image.Author)
+	}
+	if len(image.Media) != 1 || image.Media[0].URL != "https://i.redd.it/pic2.jpeg" {
+		t.Errorf("image media = %+v", image.Media)
+	}
+	if image.Gallery {
+		t.Error("image post was marked as a gallery")
+	}
+
+	gallery := feed.Items[2]
+	if !gallery.Gallery || !gallery.Reddit {
+		t.Errorf("gallery flags = %v/%v", gallery.Gallery, gallery.Reddit)
+	}
+	if len(gallery.Media) != 1 || gallery.Media[0].URL != "https://i.redd.it/cover3.jpeg" {
+		t.Errorf("gallery media = %+v", gallery.Media)
+	}
+}
+
+func TestFetchRedditSearch(t *testing.T) {
+	var gotPath, gotQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		_, _ = io.WriteString(w, redditSearchFixture)
+	}))
+	defer server.Close()
+
+	restore := redditBase
+	redditBase = server.URL
+	t.Cleanup(func() { redditBase = restore })
+
+	f := testFeature()
+	f.redditSession = "abc"
+	f.redditUserAgent = defaultRedditUserAgent
+	f.redditIncludeNSFW = true
+
+	raw := "https://old.reddit.com/search/?q=author%3AZinguBing+subreddit%3AFemdomOralCaptions&include_over_18=on&t=all&sort=new"
+	target, ok := redditTargetFor(raw)
+	if !ok {
+		t.Fatal("search did not resolve")
+	}
+	feed, err := f.fetchReddit(context.Background(), target)
+	if err != nil {
+		t.Fatalf("fetchReddit: %v", err)
+	}
+	if gotPath != "/search" {
+		t.Errorf("path = %q", gotPath)
+	}
+	for _, want := range []string{"q=author%3AZinguBing", "sort=new", "t=all", "include_over_18=on"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query = %q, want %q", gotQuery, want)
+		}
+	}
+	if feed.Title != target.Title {
+		t.Errorf("title = %q", feed.Title)
+	}
+	if len(feed.Items) != 3 {
+		t.Errorf("items = %d", len(feed.Items))
 	}
 }
 

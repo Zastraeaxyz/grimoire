@@ -51,18 +51,18 @@ var redditHosts = map[string]struct{}{
 	"m.reddit.com":   {},
 }
 
-// redditTarget is a subreddit or user posts feed.
+// redditTarget is a subreddit, user, or search posts feed.
 type redditTarget struct {
-	Kind    string // "r" or "u"
+	Kind    string // "r", "u", or "search"
 	Name    string // subreddit or username, lowercased
 	FeedURL string // canonical URL stored in the database
 	HomeURL string // human-facing page
-	Title   string // "r/cats" or "u/name"
+	Title   string // "r/cats", "u/name", or "search: <query>"
 }
 
 // redditTarget resolves a stored feed URL to a scrape target. It accepts the
-// historical .rss shapes as well as plain listing URLs, and rejects post
-// permalinks and searches: only posts listings are in scope.
+// historical .rss shapes as well as plain listing and search URLs, and rejects
+// post permalinks.
 func redditTargetFor(raw string) (redditTarget, bool) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Host == "" || !isRedditHost(u.Hostname()) {
@@ -75,10 +75,12 @@ func redditTargetFromURL(u *url.URL) (redditTarget, bool) {
 	if u == nil || !isRedditHost(u.Hostname()) {
 		return redditTarget{}, false
 	}
-	for _, segment := range pathSegments(u.Path) {
-		if strings.EqualFold(segment, "search") {
-			return redditTarget{}, false
-		}
+	if target, ok := redditSearchTarget(u); ok {
+		return target, true
+	}
+	if isRedditSearchPath(u.Path) {
+		// A search path without a query is not a feed.
+		return redditTarget{}, false
 	}
 
 	parts := pathSegments(u.Path)
@@ -114,6 +116,80 @@ func redditTargetFromURL(u *url.URL) (redditTarget, bool) {
 		}, true
 	}
 	return redditTarget{}, false
+}
+
+// redditSearchTarget canonicalizes a reddit search URL. A search feed follows
+// the newest matches for the query, so any sort and page cursor in the URL is
+// replaced by sort=new and t=all.
+func redditSearchTarget(u *url.URL) (redditTarget, bool) {
+	if u == nil || !isRedditSearchPath(u.Path) {
+		return redditTarget{}, false
+	}
+
+	query := u.Query()
+	q := strings.TrimSpace(query.Get("q"))
+	if sub := subredditFromSearchPath(u.Path); sub != "" && !hasSubredditToken(q, sub) {
+		q = strings.TrimSpace("subreddit:" + sub + " " + q)
+	}
+	if q == "" {
+		return redditTarget{}, false
+	}
+
+	// Keep only parameters that change what is matched. Sort, time, and any
+	// paging cursor belong to the feed's own newest-first fetch.
+	params := url.Values{}
+	params.Set("q", q)
+	params.Set("sort", "new")
+	params.Set("t", "all")
+	for _, key := range []string{"include_over_18", "type"} {
+		if value := strings.TrimSpace(query.Get(key)); value != "" {
+			params.Set(key, value)
+		}
+	}
+
+	canonical := &url.URL{
+		Scheme:   "https",
+		Host:     "old.reddit.com",
+		Path:     "/search",
+		RawQuery: params.Encode(),
+	}
+	return redditTarget{
+		Kind:    "search",
+		FeedURL: canonical.String(),
+		HomeURL: redditWebBase,
+		Title:   "search: " + q,
+	}, true
+}
+
+// isRedditSearchPath reports whether a reddit path contains a search segment.
+func isRedditSearchPath(path string) bool {
+	for _, segment := range pathSegments(path) {
+		if strings.EqualFold(segment, "search") {
+			return true
+		}
+	}
+	return false
+}
+
+// subredditFromSearchPath returns the subreddit in /r/{sub}/search.
+func subredditFromSearchPath(path string) string {
+	parts := pathSegments(path)
+	if len(parts) >= 3 && strings.EqualFold(parts[0], "r") && strings.EqualFold(parts[2], "search") {
+		return strings.TrimSpace(parts[1])
+	}
+	return ""
+}
+
+// hasSubredditToken reports whether q already scopes to sub, so folding a
+// /r/{sub}/search path does not duplicate the term.
+func hasSubredditToken(q, sub string) bool {
+	want := "subreddit:" + strings.ToLower(strings.TrimSpace(sub))
+	for _, token := range strings.Fields(q) {
+		if strings.EqualFold(token, want) {
+			return true
+		}
+	}
+	return false
 }
 
 // subredditListingOK reports whether the segments after /r/{sub} describe a
@@ -213,6 +289,20 @@ func redditListingURL(target redditTarget, includeNSFW bool) string {
 			query.Set("include_over_18", "on")
 		}
 		u.RawQuery = query.Encode()
+	case "search":
+		// A search URL is already canonical. The operator's config only
+		// fills in include_over_18 when the URL did not decide it.
+		canonical, err := url.Parse(target.FeedURL)
+		if err != nil || canonical.Host == "" {
+			return target.FeedURL
+		}
+		query := canonical.Query()
+		if includeNSFW && query.Get("include_over_18") == "" {
+			query.Set("include_over_18", "on")
+		}
+		u.Path = canonical.Path
+		u.RawQuery = query.Encode()
+		return u.String()
 	}
 	return u.String()
 }
@@ -366,8 +456,8 @@ func (f *Feature) warnMissingRedditSession() {
 	}
 }
 
-// fetchReddit loads a subreddit or user listing and normalizes it into the
-// same shape as an RSS document.
+// fetchReddit loads a subreddit, user, or search listing and normalizes it
+// into the same shape as an RSS document.
 func (f *Feature) fetchReddit(ctx context.Context, target redditTarget) (*parsedFeed, error) {
 	endpoint := redditListingURL(target, f.redditIncludeNSFW)
 	body, err := f.redditRequest(ctx, endpoint, "text/html,application/xhtml+xml", redditMaxListingBytes)
@@ -375,7 +465,11 @@ func (f *Feature) fetchReddit(ctx context.Context, target redditTarget) (*parsed
 		return nil, err
 	}
 
-	feed, err := parseRedditListing(body)
+	parse := parseRedditListing
+	if target.Kind == "search" {
+		parse = parseRedditSearch
+	}
+	feed, err := parse(body)
 	if err != nil {
 		return nil, err
 	}
@@ -499,6 +593,178 @@ func redditListingItem(n *xhtml.Node) (FeedItem, bool) {
 	return item, true
 }
 
+// parseRedditSearch extracts the post results from an old.reddit search page
+// in page order. Search results share the t3_ identity and the post fields of
+// a listing, but use their own markup.
+func parseRedditSearch(body []byte) (*parsedFeed, error) {
+	doc, err := xhtml.Parse(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("parsing reddit search: %w", err)
+	}
+
+	feed := &parsedFeed{}
+	seen := make(map[string]struct{})
+	var walk func(*xhtml.Node)
+	walk = func(n *xhtml.Node) {
+		if n.Type == xhtml.ElementNode && n.Data == "div" && hasClassAttr(n, "search-result-link") {
+			if item, ok := redditSearchItem(n); ok {
+				if _, exists := seen[item.GUID]; !exists {
+					seen[item.GUID] = struct{}{}
+					feed.Items = append(feed.Items, item)
+				}
+			}
+			return
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(doc)
+	return feed, nil
+}
+
+// redditSearchItem builds one item from a search-result-link block.
+func redditSearchItem(n *xhtml.Node) (FeedItem, bool) {
+	fullname := firstAttrByName(n, "data-fullname")
+	if !strings.HasPrefix(fullname, "t3_") {
+		return FeedItem{}, false
+	}
+	id := strings.TrimSpace(strings.TrimPrefix(fullname, "t3_"))
+	if id == "" {
+		return FeedItem{}, false
+	}
+
+	title := ""
+	var titleHref string
+	if anchor := firstMatching(n, func(x *xhtml.Node) bool {
+		return x.Type == xhtml.ElementNode && x.Data == "a" && hasClassAttr(x, "search-title")
+	}); anchor != nil {
+		title = strings.TrimSpace(textContent(anchor))
+		titleHref = attrByName(anchor, "href")
+	}
+
+	link := redditPermalink(firstAttrByName(n, "data-permalink"))
+	if link == "" {
+		link = redditPermalink(titleHref)
+	}
+	if link == "" {
+		link = redditWebBase + "/comments/" + id
+	}
+
+	dest := strings.TrimSpace(html.UnescapeString(firstAttrByName(n, "data-url")))
+	if dest == "" || dest == link {
+		dest = redditSearchDestination(n)
+	}
+	if dest == link {
+		dest = ""
+	}
+
+	author := ""
+	if span := firstMatching(n, func(x *xhtml.Node) bool {
+		return x.Type == xhtml.ElementNode && x.Data == "span" && hasClassAttr(x, "search-author")
+	}); span != nil {
+		if anchor := firstMatching(span, func(x *xhtml.Node) bool {
+			return x.Type == xhtml.ElementNode && x.Data == "a"
+		}); anchor != nil {
+			author = strings.TrimSpace(textContent(anchor))
+		}
+	}
+	if author == "" {
+		author = strings.TrimSpace(firstAttrByName(n, "data-author"))
+	}
+
+	content := ""
+	if dest != "" && !isRedditOwned(dest) {
+		content = "<p>" + html.EscapeString(dest) + "</p>"
+	}
+
+	gallery := isRedditGallery(dest)
+	thumbnail := redditSearchThumbnail(n)
+	var declared []Media
+	switch {
+	case isImageDestination(dest):
+		declared = append(declared, Media{URL: dest})
+	case gallery:
+		if cover := redditGalleryCover(thumbnail); cover != "" {
+			declared = append(declared, Media{URL: cover})
+		} else if thumbnail != "" {
+			declared = append(declared, Media{URL: thumbnail})
+		}
+	case thumbnail != "":
+		declared = append(declared, Media{URL: thumbnail})
+	}
+
+	item := FeedItem{
+		GUID:      fullname,
+		Title:     title,
+		Link:      link,
+		Author:    author,
+		Content:   content,
+		Published: redditPublishedAt(n),
+		Reddit:    true,
+		Gallery:   gallery,
+	}
+	item.Media = collectMedia(item, declared)
+	return item, true
+}
+
+// redditSearchDestination returns the external destination linked from a
+// result's footer. Self posts link back to their own permalink, which is not
+// useful as a destination.
+func redditSearchDestination(n *xhtml.Node) string {
+	footer := firstMatching(n, func(x *xhtml.Node) bool {
+		return x.Type == xhtml.ElementNode && x.Data == "div" && hasClassAttr(x, "search-result-footer")
+	})
+	if footer == nil {
+		return ""
+	}
+	anchor := firstMatching(footer, func(x *xhtml.Node) bool {
+		return x.Type == xhtml.ElementNode && x.Data == "a"
+	})
+	if anchor == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(html.UnescapeString(attrByName(anchor, "href")))
+	if strings.HasPrefix(raw, "//") {
+		raw = "https:" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return u.String()
+}
+
+// redditSearchThumbnail returns the first reddit preview image in a result,
+// which gives galleries and videos a cover in the listing post.
+func redditSearchThumbnail(n *xhtml.Node) string {
+	var found string
+	var walk func(*xhtml.Node)
+	walk = func(x *xhtml.Node) {
+		if found != "" {
+			return
+		}
+		if x.Type == xhtml.ElementNode && x.Data == "img" {
+			raw := strings.TrimSpace(html.UnescapeString(attrByName(x, "src")))
+			if strings.HasPrefix(raw, "//") {
+				raw = "https:" + raw
+			}
+			if u, err := url.Parse(raw); err == nil {
+				switch strings.ToLower(u.Hostname()) {
+				case "preview.redd.it", "external-preview.redd.it":
+					found = u.String()
+					return
+				}
+			}
+		}
+		for child := x.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(n)
+	return found
+}
+
 // redditPublishedAt reads the post time from the tagline's <time> element,
 // falling back to data-timestamp. Reddit has used both seconds and
 // milliseconds there, so the magnitude decides.
@@ -513,7 +779,7 @@ func redditPublishedAt(n *xhtml.Node) time.Time {
 		}
 	}
 
-	raw := strings.TrimSpace(attrByName(n, "data-timestamp"))
+	raw := strings.TrimSpace(firstAttrByName(n, "data-timestamp"))
 	if raw == "" {
 		return time.Time{}
 	}
@@ -870,6 +1136,21 @@ func hasClassAttr(n *xhtml.Node, want string) bool {
 		}
 	}
 	return false
+}
+
+// firstAttrByName returns the first occurrence of an attribute on n or one of
+// its descendants. Search result wrappers keep their data-* attributes on a
+// nested element rather than on the wrapper itself.
+func firstAttrByName(n *xhtml.Node, key string) string {
+	if value := attrByName(n, key); value != "" {
+		return value
+	}
+	for child := n.FirstChild; child != nil; child = child.NextSibling {
+		if value := firstAttrByName(child, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func attrByName(n *xhtml.Node, key string) string {
