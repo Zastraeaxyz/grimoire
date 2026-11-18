@@ -20,10 +20,10 @@ Discord bot for the zxyz server, built on
   are resolved through bdsmlr's post API, because the feed can advertise an
   original GIF that now exists only as an MP4.
 - **Reddit feeds**: reddit retired its `.rss` endpoints, so `/rss add` also
-  accepts subreddit and user URLs and reads their newest-first listing
-  directly. Every Reddit post gets a **Load full post** or **Load gallery**
-  button that fetches the complete gallery or video on demand, then removes
-  the placeholder post. See [Reddit feeds](#reddit-feeds).
+  accepts subreddit, user, and search URLs and reads their newest-first
+  results directly. Every Reddit post gets a **Load full post** or **Load
+  gallery** button that fetches the complete gallery or video on demand, then
+  removes the placeholder post. See [Reddit feeds](#reddit-feeds).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -51,8 +51,8 @@ Both the bare value and a full `reddit_session=...` cookie header are
 accepted. The cookie is never logged. Without it, Reddit feeds fail with a
 clear error and `/rss list` shows it.
 
-Supported URLs include the plain page, the `.rss` shapes, listing sorts, and
-user profiles:
+Supported URLs include the plain page, the `.rss` shapes, listing sorts, user
+profiles, and searches:
 
 ```
 https://reddit.com/r/cats
@@ -60,16 +60,35 @@ https://www.reddit.com/r/cats/new
 https://www.reddit.com/r/cats/.rss
 https://www.reddit.com/user/someone
 https://www.reddit.com/u/someone/submitted.rss
+https://www.reddit.com/search?q=cats
 ```
 
-All of them are normalized to `https://www.reddit.com/r/<name>` or
+Subreddit and user URLs are normalized to `https://www.reddit.com/r/<name>` or
 `https://www.reddit.com/user/<name>`, and a feed always follows the newest
-posts, regardless of the sort in the URL. Search pages and post permalinks are
-rejected.
+posts, regardless of the sort in the URL. Post permalinks are rejected.
+
+### Reddit searches
+
+A search URL follows the newest matches for its query. Use Reddit's search
+syntax in `q`, including `author:`, `subreddit:`, `site:`, `selftext:`, and
+`nsfw:`:
+
+```
+https://old.reddit.com/search/?q=author%3AZinguBing+subreddit%3AFemdomOralCaptions+subreddit%3Akeyholdercaptions+subreddit%3Acuckoldcaptions&include_over_18=on&t=all&sort=new
+```
+
+The bot normalizes the URL to `old.reddit.com/search`, forces `sort=new` and
+`t=all`, and keeps `q`, `include_over_18`, and `type`. Paging cursors are
+dropped so the feed always starts at the newest result. A
+`/r/<name>/search?q=...` URL is folded into a `subreddit:<name>` term, so
+`https://www.reddit.com/r/golang/search?q=generics` becomes a search for
+`subreddit:golang generics`. Search results use the same card, poster footer,
+gallery marker, and **Load full post** button as other Reddit feeds.
 
 `REDDIT_INCLUDE_NSFW` defaults to `true`, so NSFW communities and profiles can
-be followed. It sends Reddit's `over18` cookie and `include_over_18=on`.
-Turn it off to keep the bot out of NSFW listings entirely.
+be followed. It sends Reddit's `over18` cookie and `include_over_18=on` unless
+the URL already sets `include_over_18` itself. Turn it off to keep the bot out
+of NSFW listings entirely.
 
 Every Reddit card names the poster as `u/<name>` in its footer. The first post
 shows what the listing carries: the full image for image posts, the cover for
