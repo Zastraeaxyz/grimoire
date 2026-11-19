@@ -94,6 +94,7 @@ func run() error {
 	bdsmlr.New(bdsmlr.Options{
 		GuildID: cfg.GuildID,
 		Session: cfg.BDSMLRSession,
+		Store:   st,
 		Log:     log,
 	}).Register(b)
 

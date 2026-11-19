@@ -41,8 +41,8 @@ func TestCanUseBot(t *testing.T) {
 			i := &discordgo.InteractionCreate{
 				Interaction: &discordgo.Interaction{Member: tc.member},
 			}
-			if got := canUseBot(i); got != tc.want {
-				t.Fatalf("canUseBot = %v, want %v", got, tc.want)
+			if got := CanUseBot(i); got != tc.want {
+				t.Fatalf("CanUseBot = %v, want %v", got, tc.want)
 			}
 		})
 	}

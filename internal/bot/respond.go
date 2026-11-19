@@ -5,12 +5,22 @@ import "github.com/bwmarrin/discordgo"
 // ReplyEphemeral sends a new ephemeral reply. Use it only before the
 // interaction has been acknowledged.
 func ReplyEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
+	return ReplyEphemeralWithComponents(s, i, content, nil)
+}
+
+// ReplyEphemeralWithComponents sends an ephemeral reply with buttons or other
+// components. A nil slice sends no components.
+func ReplyEphemeralWithComponents(s *discordgo.Session, i *discordgo.InteractionCreate, content string, components []discordgo.MessageComponent) error {
+	data := &discordgo.InteractionResponseData{
+		Content: content,
+		Flags:   discordgo.MessageFlagsEphemeral,
+	}
+	if components != nil {
+		data.Components = components
+	}
 	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: content,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
+		Data: data,
 	})
 }
 
@@ -34,9 +44,18 @@ func DeferPublic(s *discordgo.Session, i *discordgo.InteractionCreate) error {
 
 // EditEphemeral replaces a deferred reply with content.
 func EditEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
-	_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: &content,
-	})
+	return EditEphemeralWithComponents(s, i, content, nil)
+}
+
+// EditEphemeralWithComponents replaces a deferred reply and sets its
+// components. Pass an empty non-nil slice to remove existing buttons; pass nil
+// to leave them unchanged.
+func EditEphemeralWithComponents(s *discordgo.Session, i *discordgo.InteractionCreate, content string, components []discordgo.MessageComponent) error {
+	edit := &discordgo.WebhookEdit{Content: &content}
+	if components != nil {
+		edit.Components = &components
+	}
+	_, err := s.InteractionResponseEdit(i.Interaction, edit)
 	return err
 }
 

@@ -36,8 +36,7 @@ Discord bot for the zxyz server, built on
 - `/settings command-role role:<role>` - choose the role that may run member
   commands, or omit `role` to limit them to server admins
 - `/settings status` - show the member command role
-- `/bdsmlr invite email:<address>` - send a bdsmlr invitation to an email
-  address
+- `/bdsmlr invite email:<address>` - confirm and send a bdsmlr invitation
 
 Feeds are polled once an hour. Each item is recorded in SQLite by GUID, so a
 restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
@@ -134,6 +133,19 @@ browser identity the bbdsmlr app uses. Every invite is a normal BuddyPress
 submission, so pending invitations can still be reviewed or canceled on the
 account site. A WordPress error notice is reported back instead of being shown
 as success.
+
+`/bdsmlr invite` never sends on the first command. It replies with the email
+address and a **Send invite** button, so the member can double-check the
+address and see what happens next. The invitation is sent only after the
+button is pressed, and the button expires after 15 minutes. A member can send
+one invitation every 24 hours; the limit is consumed only by a successful
+send, so a failed attempt can be retried. Server admins are exempt from the
+daily limit. A **Cancel** button discards the pending confirmation.
+
+After a successful send, the bot posts
+`An invite has been sent to your email @member` in the channel where the
+command was used, so the server can see that the bot is being used. The
+invited email address is never posted publicly.
 
 `BDSMLR_SESSION` is stored in the environment like `REDDIT_SESSION`. It is
 never logged, and it needs to be refreshed when the account-site session

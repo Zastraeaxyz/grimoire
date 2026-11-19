@@ -447,4 +447,17 @@ func TestOpenMigratesVersionThreeDatabase(t *testing.T) {
 	if settings.UserCommandRoleID != "role-command" {
 		t.Fatalf("UserCommandRoleID = %q, want role-command", settings.UserCommandRoleID)
 	}
+
+	if err := st.CreateBDSMLRConfirmation(ctx, &BDSMLRConfirmation{
+		Token:     "token-1",
+		GuildID:   "guild-1",
+		UserID:    "user-1",
+		Email:     "friend@example.com",
+		ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateBDSMLRConfirmation after migration: %v", err)
+	}
+	if err := st.RecordBDSMLRInvite(ctx, "guild-1", "user-1"); err != nil {
+		t.Fatalf("RecordBDSMLRInvite after migration: %v", err)
+	}
 }

@@ -225,10 +225,10 @@ func (b *Bot) syncCommands(s *discordgo.Session) error {
 	return nil
 }
 
-// canUseBot reports whether the interaction comes from a server admin.
+// CanUseBot reports whether the interaction comes from a server admin.
 // Component handlers such as the welcome button are intentionally not gated,
 // because they are meant for every member.
-func canUseBot(i *discordgo.InteractionCreate) bool {
+func CanUseBot(i *discordgo.InteractionCreate) bool {
 	if i.Member == nil {
 		return false
 	}
@@ -241,7 +241,7 @@ func canUseBot(i *discordgo.InteractionCreate) bool {
 // registered with AddUserCommand also pass for members holding the role that
 // /settings command-role saved.
 func (b *Bot) commandDenial(ctx context.Context, i *discordgo.InteractionCreate, name string) string {
-	if canUseBot(i) {
+	if CanUseBot(i) {
 		return ""
 	}
 
@@ -283,7 +283,7 @@ func hasRoleID(roles []string, want string) bool {
 	return false
 }
 
-func interactionUserID(i *discordgo.InteractionCreate) string {
+func InteractionUserID(i *discordgo.InteractionCreate) string {
 	if i.Member != nil && i.Member.User != nil {
 		return i.Member.User.ID
 	}
@@ -318,7 +318,7 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 		if denial := b.commandDenial(ctx, i, name); denial != "" {
 			b.Log.Warn("rejected command",
 				"command", name,
-				"user_id", interactionUserID(i),
+				"user_id", InteractionUserID(i),
 				"reason", denial,
 			)
 			if err := ReplyEphemeral(s, i, denial); err != nil {
@@ -339,10 +339,10 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 
 	case discordgo.InteractionApplicationCommandAutocomplete:
 		name := i.ApplicationCommandData().Name
-		if !canUseBot(i) {
+		if !CanUseBot(i) {
 			b.Log.Warn("rejected autocomplete from non-admin",
 				"command", name,
-				"user_id", interactionUserID(i),
+				"user_id", InteractionUserID(i),
 			)
 			if err := RespondAutocomplete(s, i, []*discordgo.ApplicationCommandOptionChoice{}); err != nil {
 				b.Log.Warn("replying to non-admin autocomplete", "err", err)
