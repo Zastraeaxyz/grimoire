@@ -189,7 +189,7 @@ func (f *Feature) handleComponent(ctx context.Context, s *discordgo.Session, i *
 		return fmt.Errorf("loading the bdsmlr confirmation: %w", err)
 	}
 	if confirmation == nil {
-		return replaceConfirmation(s, i, "That confirmation is no longer valid. Run `/bdsmlr invite` again.", []discordgo.MessageComponent{})
+		return followupEphemeral(s, i, "That confirmation is no longer valid. Run `/bdsmlr invite` again.")
 	}
 	if time.Now().UTC().After(confirmation.ExpiresAt) {
 		if err := f.store.DeleteBDSMLRConfirmation(ctx, token); err != nil {
@@ -203,8 +203,12 @@ func (f *Feature) handleComponent(ctx context.Context, s *discordgo.Session, i *
 
 	switch action {
 	case "cancel":
-		if err := f.store.DeleteBDSMLRConfirmation(ctx, token); err != nil {
+		claimed, err := f.store.ClaimBDSMLRConfirmation(ctx, token)
+		if err != nil {
 			return fmt.Errorf("canceling the bdsmlr confirmation: %w", err)
+		}
+		if !claimed {
+			return alreadyHandled(s, i)
 		}
 		return replaceConfirmation(s, i, "Confirmation canceled. No invitation was sent.", []discordgo.MessageComponent{})
 	case "send":
@@ -224,27 +228,43 @@ func (f *Feature) confirmInvite(ctx context.Context, s *discordgo.Session, i *di
 	f.inviteMu.Lock()
 	defer f.inviteMu.Unlock()
 
+	// Claim the token before doing anything else. A double-click or a Send and
+	// Cancel race then has exactly one winner.
+	claimed, err := f.store.ClaimBDSMLRConfirmation(workCtx, confirmation.Token)
+	if err != nil {
+		f.log.Error("claiming bdsmlr confirmation", "token", confirmation.Token, "err", err)
+		return bot.EditEphemeralWithComponents(s, i,
+			"I could not process the invite. Try again in a moment.",
+			confirmationComponents(confirmation.Token),
+		)
+	}
+	if !claimed {
+		return alreadyHandled(s, i)
+	}
+
 	// Server admins are not subject to the member invite limit.
 	admin := bot.CanUseBot(i)
 	if !admin {
 		allowed, next, err := f.inviteAllowed(workCtx, confirmation.UserID)
 		if err != nil {
 			f.log.Error("checking bdsmlr invite limit", "user_id", confirmation.UserID, "err", err)
+			f.restoreConfirmation(workCtx, confirmation)
 			return bot.EditEphemeralWithComponents(s, i,
 				"I could not check the invite limit. Try again in a moment.",
 				confirmationComponents(confirmation.Token),
 			)
 		}
 		if !allowed {
-			if err := f.store.DeleteBDSMLRConfirmation(workCtx, confirmation.Token); err != nil {
-				f.log.Warn("deleting a rate-limited bdsmlr confirmation", "token", confirmation.Token, "err", err)
-			}
 			return bot.EditEphemeralWithComponents(s, i, rateLimitMessage(next), []discordgo.MessageComponent{})
 		}
 	}
 
 	message, err := f.sendInvite(workCtx, confirmation.Email)
 	if err != nil {
+		// The claim deleted the pending row. Restore it so a definite failure,
+		// such as a missing session or a rejected form, can be retried. A
+		// duplicate attempt to the same address is rejected by the site.
+		f.restoreConfirmation(workCtx, confirmation)
 		retry := confirmationComponents(confirmation.Token)
 		if errors.Is(err, errAccountSession) {
 			f.log.Warn("bdsmlr invite needs a session", "err", err)
@@ -264,9 +284,6 @@ func (f *Feature) confirmInvite(ctx context.Context, s *discordgo.Session, i *di
 		if err := f.store.RecordBDSMLRInvite(workCtx, f.guildID, confirmation.UserID); err != nil {
 			f.log.Error("recording bdsmlr invite", "user_id", confirmation.UserID, "err", err)
 		}
-	}
-	if err := f.store.DeleteBDSMLRConfirmation(workCtx, confirmation.Token); err != nil {
-		f.log.Warn("deleting a sent bdsmlr confirmation", "token", confirmation.Token, "err", err)
 	}
 
 	// Public announcement in the channel where the command was used, so the
@@ -312,6 +329,28 @@ func (f *Feature) inviteAllowed(ctx context.Context, userID string) (bool, time.
 
 func replaceConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate, content string, components []discordgo.MessageComponent) error {
 	return bot.EditEphemeralWithComponents(s, i, content, components)
+}
+
+// alreadyHandled answers a second click with a separate ephemeral message, so
+// it does not overwrite the result of the interaction that won the claim.
+func alreadyHandled(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	return followupEphemeral(s, i, "This invite was already handled.")
+}
+
+func followupEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: content,
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	return err
+}
+
+// restoreConfirmation puts a claimed confirmation back after a failure, so the
+// retry button still works.
+func (f *Feature) restoreConfirmation(ctx context.Context, confirmation *store.BDSMLRConfirmation) {
+	if err := f.store.CreateBDSMLRConfirmation(ctx, confirmation); err != nil {
+		f.log.Error("restoring bdsmlr confirmation", "token", confirmation.Token, "err", err)
+	}
 }
 
 func confirmationMessage(email string, admin bool) string {

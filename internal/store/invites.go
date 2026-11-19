@@ -63,6 +63,22 @@ func (s *Store) DeleteBDSMLRConfirmation(ctx context.Context, token string) erro
 	return err
 }
 
+// ClaimBDSMLRConfirmation deletes a confirmation and reports whether this
+// caller removed it. Only one caller can claim a token, so a double-click or a
+// Send and Cancel race cannot act twice.
+func (s *Store) ClaimBDSMLRConfirmation(ctx context.Context, token string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM bdsmlr_invite_confirmations WHERE token = ?`, token)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
 // DeleteBDSMLRConfirmationsForUser clears a member's pending confirmation so
 // only the newest one can be used.
 func (s *Store) DeleteBDSMLRConfirmationsForUser(ctx context.Context, guildID, userID string) error {

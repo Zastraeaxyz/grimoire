@@ -92,6 +92,37 @@ func TestBDSMLRConfirmationReplaceAndPrune(t *testing.T) {
 	}
 }
 
+func TestClaimBDSMLRConfirmation(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	if err := st.CreateBDSMLRConfirmation(ctx, &BDSMLRConfirmation{
+		Token:     "token-1",
+		GuildID:   "guild-1",
+		ChannelID: "channel-1",
+		UserID:    "user-1",
+		Email:     "friend@example.com",
+		ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateBDSMLRConfirmation: %v", err)
+	}
+
+	claimed, err := st.ClaimBDSMLRConfirmation(ctx, "token-1")
+	if err != nil {
+		t.Fatalf("ClaimBDSMLRConfirmation: %v", err)
+	}
+	if !claimed {
+		t.Fatal("first claim should succeed")
+	}
+	claimed, err = st.ClaimBDSMLRConfirmation(ctx, "token-1")
+	if err != nil {
+		t.Fatalf("ClaimBDSMLRConfirmation again: %v", err)
+	}
+	if claimed {
+		t.Fatal("second claim should fail")
+	}
+}
+
 func TestBDSMLRInviteRateLimit(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
