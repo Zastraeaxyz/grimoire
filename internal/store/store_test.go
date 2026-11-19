@@ -38,11 +38,12 @@ func TestSaveAndLoadSettings(t *testing.T) {
 	st := newTestStore(t)
 
 	want := &GuildSettings{
-		GuildID:          "guild-1",
-		WelcomeChannelID: "channel-1",
-		BaseRoleID:       "role-1",
-		RulesChannelID:   "rules-1",
-		PanelBody:        "custom body",
+		GuildID:           "guild-1",
+		WelcomeChannelID:  "channel-1",
+		BaseRoleID:        "role-1",
+		RulesChannelID:    "rules-1",
+		PanelBody:         "custom body",
+		UserCommandRoleID: "command-role-1",
 	}
 	if err := st.SaveGuildSettings(ctx, want); err != nil {
 		t.Fatalf("SaveGuildSettings: %v", err)
@@ -58,11 +59,39 @@ func TestSaveAndLoadSettings(t *testing.T) {
 	if got.WelcomeChannelID != want.WelcomeChannelID ||
 		got.BaseRoleID != want.BaseRoleID ||
 		got.RulesChannelID != want.RulesChannelID ||
-		got.PanelBody != want.PanelBody {
+		got.PanelBody != want.PanelBody ||
+		got.UserCommandRoleID != want.UserCommandRoleID {
 		t.Fatalf("settings mismatch: got %+v want %+v", got, want)
 	}
 	if time.Since(got.UpdatedAt) > time.Minute {
 		t.Fatalf("unexpected updated_at: %v", got.UpdatedAt)
+	}
+}
+
+func TestSetUserCommandRoleWithoutSettings(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	if err := st.SetUserCommandRole(ctx, "guild-1", "role-9"); err != nil {
+		t.Fatalf("SetUserCommandRole: %v", err)
+	}
+	got, err := st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings: %v", err)
+	}
+	if got == nil || got.UserCommandRoleID != "role-9" {
+		t.Fatalf("settings = %+v, want the user command role", got)
+	}
+
+	if err := st.SetUserCommandRole(ctx, "guild-1", ""); err != nil {
+		t.Fatalf("SetUserCommandRole(clear): %v", err)
+	}
+	got, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings: %v", err)
+	}
+	if got.UserCommandRoleID != "" {
+		t.Fatalf("UserCommandRoleID = %q, want empty", got.UserCommandRoleID)
 	}
 }
 

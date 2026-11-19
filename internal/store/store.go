@@ -12,22 +12,25 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 // Store is the SQLite-backed persistence layer.
 type Store struct {
 	db *sql.DB
 }
 
-// GuildSettings holds the per-guild welcome configuration.
+// GuildSettings holds the per-guild configuration. The welcome fields belong
+// to the welcome panel; UserCommandRoleID gates commands that are open to
+// members beyond server admins.
 type GuildSettings struct {
-	GuildID          string
-	WelcomeChannelID string
-	BaseRoleID       string
-	RulesChannelID   string
-	PanelMessageID   string
-	PanelBody        string
-	UpdatedAt        time.Time
+	GuildID           string
+	WelcomeChannelID  string
+	BaseRoleID        string
+	RulesChannelID    string
+	PanelMessageID    string
+	PanelBody         string
+	UserCommandRoleID string
+	UpdatedAt         time.Time
 }
 
 // Open opens the SQLite database, creating its directory if needed, and
@@ -140,6 +143,12 @@ func migrate(ctx context.Context, db *sql.DB) error {
 				`ALTER TABLE feeds ADD COLUMN added_by TEXT NOT NULL DEFAULT ''`,
 			},
 		},
+		{
+			version: 4,
+			statements: []string{
+				`ALTER TABLE guild_settings ADD COLUMN user_command_role_id TEXT NOT NULL DEFAULT ''`,
+			},
+		},
 	}
 
 	for _, step := range steps {
@@ -170,7 +179,7 @@ func (s *Store) Close() error {
 func (s *Store) GetGuildSettings(ctx context.Context, guildID string) (*GuildSettings, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT guild_id, welcome_channel_id, base_role_id, rules_channel_id,
-		       panel_message_id, panel_body, updated_at
+		       panel_message_id, panel_body, user_command_role_id, updated_at
 		FROM guild_settings
 		WHERE guild_id = ?`, guildID)
 
@@ -185,6 +194,7 @@ func (s *Store) GetGuildSettings(ctx context.Context, guildID string) (*GuildSet
 		&st.RulesChannelID,
 		&st.PanelMessageID,
 		&st.PanelBody,
+		&st.UserCommandRoleID,
 		&updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -202,14 +212,15 @@ func (s *Store) SaveGuildSettings(ctx context.Context, st *GuildSettings) error 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO guild_settings (
 			guild_id, welcome_channel_id, base_role_id, rules_channel_id,
-			panel_message_id, panel_body, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, unixepoch())
+			panel_message_id, panel_body, user_command_role_id, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())
 		ON CONFLICT(guild_id) DO UPDATE SET
 			welcome_channel_id = excluded.welcome_channel_id,
 			base_role_id = excluded.base_role_id,
 			rules_channel_id = excluded.rules_channel_id,
 			panel_message_id = excluded.panel_message_id,
 			panel_body = excluded.panel_body,
+			user_command_role_id = excluded.user_command_role_id,
 			updated_at = unixepoch()`,
 		st.GuildID,
 		st.WelcomeChannelID,
@@ -217,7 +228,22 @@ func (s *Store) SaveGuildSettings(ctx context.Context, st *GuildSettings) error 
 		st.RulesChannelID,
 		st.PanelMessageID,
 		st.PanelBody,
+		st.UserCommandRoleID,
 	)
+	return err
+}
+
+// SetUserCommandRole records which role may run commands that are open to
+// members. An empty role removes the grant. The upsert lets an admin configure
+// it before the welcome panel exists.
+func (s *Store) SetUserCommandRole(ctx context.Context, guildID, roleID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO guild_settings (guild_id, user_command_role_id, updated_at)
+		VALUES (?, ?, unixepoch())
+		ON CONFLICT(guild_id) DO UPDATE SET
+			user_command_role_id = excluded.user_command_role_id,
+			updated_at = unixepoch()`,
+		guildID, roleID)
 	return err
 }
 

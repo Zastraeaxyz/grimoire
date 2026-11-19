@@ -141,6 +141,7 @@ func (f *Feature) setup(ctx context.Context, s *discordgo.Session, i *discordgo.
 		settings.RulesChannelID = old.RulesChannelID
 		settings.PanelBody = old.PanelBody
 		settings.PanelMessageID = old.PanelMessageID
+		settings.UserCommandRoleID = old.UserCommandRoleID
 	}
 	if rulesID != "" {
 		settings.RulesChannelID = rulesID

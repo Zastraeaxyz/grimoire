@@ -279,6 +279,15 @@ func TestOpenMigratesVersionTwoDatabase(t *testing.T) {
 		t.Fatalf("sql.Open: %v", err)
 	}
 	stmts := []string{
+		`CREATE TABLE guild_settings (
+			guild_id TEXT PRIMARY KEY,
+			welcome_channel_id TEXT NOT NULL DEFAULT '',
+			base_role_id TEXT NOT NULL DEFAULT '',
+			rules_channel_id TEXT NOT NULL DEFAULT '',
+			panel_message_id TEXT NOT NULL DEFAULT '',
+			panel_body TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+		)`,
 		`CREATE TABLE feeds (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			guild_id TEXT NOT NULL,
@@ -299,6 +308,7 @@ func TestOpenMigratesVersionTwoDatabase(t *testing.T) {
 			seen_at INTEGER NOT NULL DEFAULT (unixepoch()),
 			PRIMARY KEY (feed_id, guid)
 		)`,
+		`INSERT INTO guild_settings (guild_id, base_role_id) VALUES ('guild-1', 'role-old')`,
 		`INSERT INTO feeds (guild_id, url, channel_id, title)
 			VALUES ('guild-1', 'https://example.com/old', 'channel-1', 'Old')`,
 		`PRAGMA user_version = 2`,
@@ -335,5 +345,106 @@ func TestOpenMigratesVersionTwoDatabase(t *testing.T) {
 	}
 	if _, err := st.CreateFeed(ctx, feed); err != nil {
 		t.Fatalf("CreateFeed after migration: %v", err)
+	}
+
+	settings, err := st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings after migration: %v", err)
+	}
+	if settings == nil || settings.BaseRoleID != "role-old" || settings.UserCommandRoleID != "" {
+		t.Fatalf("existing settings changed unexpectedly: %+v", settings)
+	}
+	if err := st.SetUserCommandRole(ctx, "guild-1", "role-command"); err != nil {
+		t.Fatalf("SetUserCommandRole after migration: %v", err)
+	}
+	settings, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings after setting the role: %v", err)
+	}
+	if settings.UserCommandRoleID != "role-command" {
+		t.Fatalf("UserCommandRoleID = %q, want role-command", settings.UserCommandRoleID)
+	}
+}
+
+// TestOpenMigratesVersionThreeDatabase covers the deployed v3 schema, which
+// predates the user command role. A v3 database already has the welcome
+// settings and feed columns, so only the guild settings column is added.
+func TestOpenMigratesVersionThreeDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grimoire.db")
+
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	stmts := []string{
+		`CREATE TABLE guild_settings (
+			guild_id TEXT PRIMARY KEY,
+			welcome_channel_id TEXT NOT NULL DEFAULT '',
+			base_role_id TEXT NOT NULL DEFAULT '',
+			rules_channel_id TEXT NOT NULL DEFAULT '',
+			panel_message_id TEXT NOT NULL DEFAULT '',
+			panel_body TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+		)`,
+		`CREATE TABLE feeds (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			guild_id TEXT NOT NULL,
+			url TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
+			etag TEXT NOT NULL DEFAULT '',
+			last_modified TEXT NOT NULL DEFAULT '',
+			last_checked_at INTEGER,
+			last_error TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			domain TEXT NOT NULL DEFAULT '',
+			added_by TEXT NOT NULL DEFAULT '',
+			UNIQUE (guild_id, url)
+		)`,
+		`CREATE TABLE feed_items (
+			feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+			guid TEXT NOT NULL,
+			message_id TEXT NOT NULL DEFAULT '',
+			seen_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			PRIMARY KEY (feed_id, guid)
+		)`,
+		`INSERT INTO guild_settings (guild_id, welcome_channel_id, base_role_id)
+			VALUES ('guild-1', 'channel-1', 'role-old')`,
+		`PRAGMA user_version = 3`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("preparing v3 database: %v", err)
+		}
+	}
+	db.Close()
+
+	st, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	ctx := context.Background()
+	settings, err := st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings after migration: %v", err)
+	}
+	if settings == nil ||
+		settings.WelcomeChannelID != "channel-1" ||
+		settings.BaseRoleID != "role-old" ||
+		settings.UserCommandRoleID != "" {
+		t.Fatalf("existing settings changed unexpectedly: %+v", settings)
+	}
+
+	if err := st.SetUserCommandRole(ctx, "guild-1", "role-command"); err != nil {
+		t.Fatalf("SetUserCommandRole after migration: %v", err)
+	}
+	settings, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings after setting the role: %v", err)
+	}
+	if settings.UserCommandRoleID != "role-command" {
+		t.Fatalf("UserCommandRoleID = %q, want role-command", settings.UserCommandRoleID)
 	}
 }

@@ -27,3 +27,17 @@ func TestParseBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadBdsmlrSession(t *testing.T) {
+	t.Setenv("DISCORD_TOKEN", "token")
+	t.Setenv("GUILD_ID", "123")
+	t.Setenv("BDSMLR_SESSION", "  wordpress_logged_in_abc=value  ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.BDSMLRSession != "wordpress_logged_in_abc=value" {
+		t.Fatalf("BDSMLRSession = %q", cfg.BDSMLRSession)
+	}
+}

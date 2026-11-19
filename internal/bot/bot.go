@@ -33,6 +33,10 @@ type AutocompleteHandler func(ctx context.Context, s *discordgo.Session, i *disc
 // ReadyHook runs after every gateway READY event.
 type ReadyHook func(ctx context.Context, s *discordgo.Session) error
 
+// UserRoleLookup returns the role ID that may run commands registered with
+// AddUserCommand. An empty ID means no role is configured yet.
+type UserRoleLookup func(ctx context.Context) (string, error)
+
 // Bot owns the Discord session and dispatches interactions to features.
 type Bot struct {
 	Session *discordgo.Session
@@ -43,6 +47,8 @@ type Bot struct {
 	mu                sync.RWMutex
 	commands          map[string]*discordgo.ApplicationCommand
 	commandHandlers   map[string]CommandHandler
+	userCommands      map[string]struct{}
+	userRole          UserRoleLookup
 	autocompletes     map[string]AutocompleteHandler
 	componentHandlers map[string]ComponentHandler
 	readyHooks        []ReadyHook
@@ -73,6 +79,7 @@ func New(opts Options) (*Bot, error) {
 		guildID:           opts.GuildID,
 		commands:          make(map[string]*discordgo.ApplicationCommand),
 		commandHandlers:   make(map[string]CommandHandler),
+		userCommands:      make(map[string]struct{}),
 		autocompletes:     make(map[string]AutocompleteHandler),
 		componentHandlers: make(map[string]ComponentHandler),
 	}
@@ -87,6 +94,24 @@ func (b *Bot) AddCommand(cmd *discordgo.ApplicationCommand, handler CommandHandl
 	defer b.mu.Unlock()
 	b.commands[cmd.Name] = cmd
 	b.commandHandlers[cmd.Name] = handler
+}
+
+// AddUserCommand registers a slash command that members may run when they hold
+// the configured user command role. Server admins always pass. The role is read
+// per invocation, so changing it takes effect without a restart.
+func (b *Bot) AddUserCommand(cmd *discordgo.ApplicationCommand, handler CommandHandler) {
+	b.AddCommand(cmd, handler)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.userCommands[cmd.Name] = struct{}{}
+}
+
+// SetUserRoleLookup installs the source of the user command role. Without it,
+// user commands stay in admin-only mode.
+func (b *Bot) SetUserRoleLookup(lookup UserRoleLookup) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.userRole = lookup
 }
 
 // AddComponent registers a component handler for a custom ID namespace, for
@@ -200,15 +225,62 @@ func (b *Bot) syncCommands(s *discordgo.Session) error {
 	return nil
 }
 
-// canUseBot reports whether the interaction comes from a server admin. The
-// bot is admin-only for now. Component handlers such as the welcome button
-// are intentionally not gated, because they are meant for every member.
+// canUseBot reports whether the interaction comes from a server admin.
+// Component handlers such as the welcome button are intentionally not gated,
+// because they are meant for every member.
 func canUseBot(i *discordgo.InteractionCreate) bool {
 	if i.Member == nil {
 		return false
 	}
 	perms := i.Member.Permissions
 	return perms&(discordgo.PermissionAdministrator|discordgo.PermissionManageGuild) != 0
+}
+
+// commandDenial returns an empty string when the member may run the command,
+// or the reason to show when they may not. Admins always pass. Commands
+// registered with AddUserCommand also pass for members holding the role that
+// /settings command-role saved.
+func (b *Bot) commandDenial(ctx context.Context, i *discordgo.InteractionCreate, name string) string {
+	if canUseBot(i) {
+		return ""
+	}
+
+	b.mu.RLock()
+	_, userCommand := b.userCommands[name]
+	lookup := b.userRole
+	b.mu.RUnlock()
+
+	if !userCommand {
+		return "You need the **Manage Server** permission to use this command."
+	}
+	if lookup == nil {
+		return "Member commands are not available until an admin chooses a role with `/settings command-role`."
+	}
+
+	roleID, err := lookup(ctx)
+	if err != nil {
+		b.Log.Error("looking up the user command role", "err", err)
+		return "I could not check permissions. Try again in a moment."
+	}
+	if roleID == "" {
+		return "An admin needs to choose a member command role with `/settings command-role`."
+	}
+	if i.Member == nil || !hasRoleID(i.Member.Roles, roleID) {
+		return fmt.Sprintf("You need the <@&%s> role to use this command.", roleID)
+	}
+	return ""
+}
+
+func hasRoleID(roles []string, want string) bool {
+	if want == "" {
+		return false
+	}
+	for _, id := range roles {
+		if id == want {
+			return true
+		}
+	}
+	return false
 }
 
 func interactionUserID(i *discordgo.InteractionCreate) string {
@@ -243,13 +315,14 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 
 	case discordgo.InteractionApplicationCommand:
 		name := i.ApplicationCommandData().Name
-		if !canUseBot(i) {
-			b.Log.Warn("rejected command from non-admin",
+		if denial := b.commandDenial(ctx, i, name); denial != "" {
+			b.Log.Warn("rejected command",
 				"command", name,
 				"user_id", interactionUserID(i),
+				"reason", denial,
 			)
-			if err := ReplyEphemeral(s, i, "This bot is limited to server admins for now."); err != nil {
-				b.Log.Warn("replying to non-admin", "err", err)
+			if err := ReplyEphemeral(s, i, denial); err != nil {
+				b.Log.Warn("replying to unauthorized user", "err", err)
 			}
 			return
 		}

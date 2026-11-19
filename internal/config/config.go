@@ -30,6 +30,10 @@ type Config struct {
 	RedditUserAgent   string
 	RedditIncludeNSFW bool
 
+	// BDSMLR account site access. Invitations use the WordPress cookies from
+	// a signed-in account.bdsmlr.com session.
+	BDSMLRSession string
+
 	// Optional seed values for the first boot. Once configured through
 	// /welcome setup the database is the source of truth.
 	WelcomeChannelID string
@@ -51,6 +55,7 @@ func Load() (*Config, error) {
 		BaseRoleID:       strings.TrimSpace(os.Getenv("BASE_ROLE_ID")),
 		RedditSession:    strings.TrimSpace(os.Getenv("REDDIT_SESSION")),
 		RedditUserAgent:  strings.TrimSpace(os.Getenv("REDDIT_USER_AGENT")),
+		BDSMLRSession:    strings.TrimSpace(os.Getenv("BDSMLR_SESSION")),
 	}
 
 	interval, err := time.ParseDuration(envOr("RSS_POLL_INTERVAL", "1h"))

@@ -24,12 +24,20 @@ Discord bot for the zxyz server, built on
   results directly. Every Reddit post gets a **Load full post** or **Load
   gallery** button that fetches the complete gallery or video on demand, then
   removes the placeholder post. See [Reddit feeds](#reddit-feeds).
+- **bdsmlr invites**: `/bdsmlr invite email:<address>` sends a membership
+  invitation through the account site. It needs `BDSMLR_SESSION` and the member
+  command role, both covered in [bdsmlr invites](#bdsmlr-invites).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
 - `/rss list` - show each feed's username, domain, channel, last check, and last error
 - `/rss test url:<url>` - preview the newest item without saving the feed
 - `/rss check` - poll every feed now
+- `/settings command-role role:<role>` - choose the role that may run member
+  commands, or omit `role` to limit them to server admins
+- `/settings status` - show the member command role
+- `/bdsmlr invite email:<address>` - send a bdsmlr invitation to an email
+  address
 
 Feeds are polled once an hour. Each item is recorded in SQLite by GUID, so a
 restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
@@ -100,9 +108,36 @@ member; after a successful load the bot removes the original post, so the
 channel keeps only the complete one. Reddit's MP4 fallback is video-only, so
 loaded videos have no audio.
 
-Commands are limited to server admins for now: members need **Manage Server**
-or **Administrator**. The welcome confirmation button stays open to every
-member.
+Commands that change server configuration need **Manage Server** or
+**Administrator**. Commands meant for members are gated by the role chosen with
+`/settings command-role`; until a role is chosen, only server admins can run
+them. The welcome confirmation button stays open to every member.
+
+## bdsmlr invites
+
+`/bdsmlr invite email:<address>` sends an invitation from the bdsmlr account
+site. The site uses a WordPress session, not the app's `v2_session` cookie, so
+`BDSMLR_SESSION` must hold the full `Cookie:` header from
+`account.bdsmlr.com`:
+
+1. Sign in at `https://account.bdsmlr.com`.
+2. Open DevTools, then Network, then reload any page on the account site.
+3. Select the document request, copy its `Cookie` request header, and paste it
+   into `BDSMLR_SESSION`. Both `wordpress_logged_in_*` and `wordpress_sec_*`
+   are needed; `wordpress_test_cookie` is harmless.
+4. Run `/settings command-role role:@Acolyte` once, so members with that role
+   can use the command.
+
+The bot resolves the account username from the session, reads a fresh
+`_wpnonce` from the invitation form, and posts the invitation with the same
+browser identity the bbdsmlr app uses. Every invite is a normal BuddyPress
+submission, so pending invitations can still be reviewed or canceled on the
+account site. A WordPress error notice is reported back instead of being shown
+as success.
+
+`BDSMLR_SESSION` is stored in the environment like `REDDIT_SESSION`. It is
+never logged, and it needs to be refreshed when the account-site session
+expires.
 
 ## Configuration
 
@@ -120,6 +155,7 @@ member.
 | `REDDIT_SESSION` | for Reddit feeds | | `reddit_session` cookie from a logged-in browser |
 | `REDDIT_USER_AGENT` | no | Firefox desktop | User-Agent for Reddit requests; Reddit rejects generic agents |
 | `REDDIT_INCLUDE_NSFW` | no | `true` | Allow NSFW subreddits and profiles (`over18`, `include_over_18=on`) |
+| `BDSMLR_SESSION` | for bdsmlr invites | | Full `Cookie` header from a signed-in `account.bdsmlr.com` session |
 
 Copy `.env.example` to `.env` for local development. Real environment
 variables override `.env`, and database settings override the seed values

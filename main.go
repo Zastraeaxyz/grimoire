@@ -13,7 +13,9 @@ import (
 
 	"grimoire/internal/bot"
 	"grimoire/internal/config"
+	"grimoire/internal/features/bdsmlr"
 	"grimoire/internal/features/rss"
+	"grimoire/internal/features/settings"
 	"grimoire/internal/features/welcome"
 	"grimoire/internal/store"
 )
@@ -65,7 +67,19 @@ func run() error {
 		return err
 	}
 
+	b.SetUserRoleLookup(func(ctx context.Context) (string, error) {
+		guildSettings, err := st.GetGuildSettings(ctx, cfg.GuildID)
+		if err != nil {
+			return "", err
+		}
+		if guildSettings == nil {
+			return "", nil
+		}
+		return guildSettings.UserCommandRoleID, nil
+	})
+
 	welcome.New(cfg.GuildID, st, log).Register(b)
+	settings.New(cfg.GuildID, st, log).Register(b)
 	rss.New(ctx, rss.Options{
 		GuildID:            cfg.GuildID,
 		Store:              st,
@@ -75,6 +89,12 @@ func run() error {
 		RedditSession:      cfg.RedditSession,
 		RedditUserAgent:    cfg.RedditUserAgent,
 		RedditIncludeNSFW:  cfg.RedditIncludeNSFW,
+	}).Register(b)
+
+	bdsmlr.New(bdsmlr.Options{
+		GuildID: cfg.GuildID,
+		Session: cfg.BDSMLRSession,
+		Log:     log,
 	}).Register(b)
 
 	health := newHealthServer(cfg.Port, log)
