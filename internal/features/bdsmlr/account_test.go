@@ -63,7 +63,7 @@ func newTestFeature(t *testing.T, handler http.Handler) *Feature {
 
 	return New(Options{
 		GuildID: "guild-1",
-		Session: "wordpress_logged_in_test=loggedin; wordpress_sec_test=secure; v2_session=ignored",
+		Session: "wordpress_logged_in_test=testmember%7C1795649467%7Ctoken%7Chmac; wordpress_sec_test=testmember%7C1795649467%7Ctoken2%7Chmac2; v2_session=ignored",
 		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 }
@@ -78,9 +78,6 @@ func TestSendInvite(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/wp-admin/profile.php":
-			_, _ = io.WriteString(w, profileFixture)
-
 		case r.URL.Path == "/members/"+login+"/invitations/send-invites/":
 			http.Redirect(w, r, wantPath, http.StatusMovedPermanently)
 
@@ -132,7 +129,7 @@ func TestSendInvite(t *testing.T) {
 		t.Errorf("referer = %q, want %q", posted.Get("_wp_http_referer"), wantPath)
 	}
 
-	if got := postHeaders.Get("Cookie"); got != "wordpress_logged_in_test=loggedin; wordpress_sec_test=secure" {
+	if got := postHeaders.Get("Cookie"); got != "wordpress_logged_in_test=testmember%7C1795649467%7Ctoken%7Chmac; wordpress_sec_test=testmember%7C1795649467%7Ctoken2%7Chmac2" {
 		t.Errorf("Cookie = %q", got)
 	}
 	if got := postHeaders.Get("User-Agent"); got != accountUserAgent {
@@ -166,8 +163,6 @@ func TestSendInviteReportsErrorNotice(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/wp-admin/profile.php":
-			_, _ = io.WriteString(w, profileFixture)
 		case r.URL.Path == path && r.Method == http.MethodPost:
 			http.Redirect(w, r, path, http.StatusFound)
 		case r.URL.Path == path:
@@ -192,12 +187,7 @@ func TestSendInviteNeedsForm(t *testing.T) {
 	const login = "testmember"
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/wp-admin/profile.php":
-			_, _ = io.WriteString(w, profileFixture)
-		default:
-			_, _ = io.WriteString(w, `<html><body><p>Nothing here.</p></body></html>`)
-		}
+		_, _ = io.WriteString(w, `<html><body><p>Nothing here.</p></body></html>`)
 	})
 
 	f := newTestFeature(t, handler)
@@ -243,14 +233,49 @@ func TestValidateEmail(t *testing.T) {
 	}
 }
 
-func TestParseUserLogin(t *testing.T) {
-	if got := parseUserLogin([]byte(profileFixture)); got != "testmember" {
-		t.Fatalf("parseUserLogin(profile) = %q", got)
+func TestUserLoginFromCookie(t *testing.T) {
+	cases := []struct {
+		name   string
+		cookie string
+		want   string
+		ok     bool
+	}{
+		{
+			name:   "url encoded",
+			cookie: "wordpress_logged_in_test=testmember%7C1795649467%7Ctoken%7Chmac",
+			want:   "testmember",
+			ok:     true,
+		},
+		{
+			name:   "raw pipes",
+			cookie: "wordpress_logged_in_test=someone|1795649467|token|hmac",
+			want:   "someone",
+			ok:     true,
+		},
+		{
+			name:   "missing logged in cookie",
+			cookie: "wordpress_sec_test=someone%7C1795649467%7Ctoken%7Chmac",
+			ok:     false,
+		},
+		{
+			name:   "empty name",
+			cookie: "wordpress_logged_in_test=%7C1795649467%7Ctoken%7Chmac",
+			ok:     false,
+		},
 	}
-
-	canonical := `<html><head><link rel="canonical" href="https://account.bdsmlr.com/members/someone/" /></head></html>`
-	if got := parseUserLogin([]byte(canonical)); got != "someone" {
-		t.Fatalf("parseUserLogin(canonical) = %q", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := userLoginFromCookie(tc.cookie)
+			if tc.ok && err != nil {
+				t.Fatalf("userLoginFromCookie: %v", err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatal("expected an error")
+			}
+			if got != tc.want {
+				t.Fatalf("userLoginFromCookie = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -289,8 +314,6 @@ func TestSendInviteUsesFreshNonce(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/wp-admin/profile.php":
-			_, _ = io.WriteString(w, profileFixture)
 		case r.URL.Path == path && r.Method == http.MethodPost:
 			if r.PostFormValue("_wpnonce") != fmt.Sprintf("nonce-%d", nonce) {
 				t.Errorf("nonce = %q, want nonce-%d", r.PostFormValue("_wpnonce"), nonce)

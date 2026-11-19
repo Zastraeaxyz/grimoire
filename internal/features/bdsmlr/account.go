@@ -42,13 +42,11 @@ func (f *Feature) sendInvite(ctx context.Context, email string) (string, error) 
 	if f.cookie == "" {
 		return "", errAccountSession
 	}
-
-	login, err := f.ensureUserLogin(ctx)
-	if err != nil {
-		return "", err
+	if f.userLogin == "" {
+		return "", errors.New("could not read the account username from the session; include the wordpress_logged_in_* cookie in `BDSMLR_SESSION`")
 	}
 
-	path := "/members/" + url.PathEscape(login) + "/invitations/"
+	path := "/members/" + url.PathEscape(f.userLogin) + "/invitations/"
 	target, err := accountURL(path)
 	if err != nil {
 		return "", err
@@ -127,37 +125,6 @@ func (f *Feature) sendInvite(ctx context.Context, email string) (string, error) 
 
 	// No notice: a 2xx or a followable redirect means WordPress accepted it.
 	return "Invitation sent.", nil
-}
-
-// ensureUserLogin reads the account username from the signed-in profile and
-// caches it. The invitations URL needs the username, and it is not configured
-// separately.
-func (f *Feature) ensureUserLogin(ctx context.Context) (string, error) {
-	f.userMu.Lock()
-	defer f.userMu.Unlock()
-
-	if f.userLogin != "" {
-		return f.userLogin, nil
-	}
-
-	target, err := accountURL("/wp-admin/profile.php")
-	if err != nil {
-		return "", err
-	}
-	page, err := f.fetchPage(ctx, target, "")
-	if err != nil {
-		return "", err
-	}
-	if err := assertPage(page); err != nil {
-		return "", err
-	}
-
-	login := parseUserLogin(page.body)
-	if login == "" {
-		return "", errors.New("could not read the account username from the session; copy a fresh cookie header from account.bdsmlr.com")
-	}
-	f.userLogin = login
-	return login, nil
 }
 
 // request performs one account-site request. form is nil for GET requests.
@@ -542,43 +509,26 @@ func feedbackKind(classes string) string {
 	return ""
 }
 
-// parseUserLogin reads the username from the WordPress profile form, with a
-// canonical member link as a fallback.
-func parseUserLogin(body []byte) string {
-	doc, err := parseHTML(body)
-	if err != nil {
-		return ""
-	}
-
-	login := ""
-	canonical := ""
-	walkNodes(doc, func(n *xhtml.Node) {
-		if n.Type != xhtml.ElementNode {
-			return
+// userLoginFromCookie reads the BuddyPress member name from the
+// wordpress_logged_in_ cookie. PHP URL-encodes the pipe separators, so the
+// value looks like "name%7Cexpires%7Ctoken%7Chmac". The profile page cannot
+// be used instead, because this account is redirected away from wp-admin.
+func userLoginFromCookie(header string) (string, error) {
+	for _, pair := range accountCookiePairs(header) {
+		if !strings.HasPrefix(pair.name, "wordpress_logged_in_") {
+			continue
 		}
-		if n.Data == "input" && attrByName(n, "id") == "user_login" && login == "" {
-			login = strings.TrimSpace(attrByName(n, "value"))
+		value := pair.value
+		if decoded, err := url.QueryUnescape(value); err == nil {
+			value = decoded
 		}
-		if n.Data == "link" && strings.EqualFold(attrByName(n, "rel"), "canonical") && canonical == "" {
-			canonical = attrByName(n, "href")
+		name := strings.TrimSpace(strings.SplitN(value, "|", 2)[0])
+		if name == "" {
+			return "", errors.New("the wordpress_logged_in_ cookie has no account username")
 		}
-	})
-	if login != "" {
-		return login
+		return name, nil
 	}
-
-	u, err := url.Parse(canonical)
-	if err != nil {
-		return ""
-	}
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) < 2 || parts[0] != "members" {
-		return ""
-	}
-	if decoded, err := url.PathUnescape(parts[1]); err == nil {
-		return decoded
-	}
-	return parts[1]
+	return "", errors.New("the session has no wordpress_logged_in_ cookie, so the account username is unknown")
 }
 
 // --- small DOM helpers ---

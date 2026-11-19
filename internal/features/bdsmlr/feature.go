@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -44,13 +43,11 @@ type Options struct {
 
 // Feature implements the BDSMLR invite command.
 type Feature struct {
-	guildID string
-	log     *slog.Logger
-	cookie  string
-	client  *http.Client
-
-	userMu    sync.Mutex
+	guildID   string
+	log       *slog.Logger
+	cookie    string
 	userLogin string
+	client    *http.Client
 }
 
 // New builds the bdsmlr feature.
@@ -58,10 +55,13 @@ func New(opts Options) *Feature {
 	if opts.Log == nil {
 		opts.Log = slog.Default()
 	}
+	cookie := normalizeAccountCookie(opts.Session)
+	userLogin, _ := userLoginFromCookie(cookie)
 	return &Feature{
-		guildID: opts.GuildID,
-		log:     opts.Log,
-		cookie:  normalizeAccountCookie(opts.Session),
+		guildID:   opts.GuildID,
+		log:       opts.Log,
+		cookie:    cookie,
+		userLogin: userLogin,
 		client: &http.Client{
 			Timeout: requestTimeout,
 			// Redirects are followed by hand so a login redirect can be told
@@ -78,6 +78,8 @@ func New(opts Options) *Feature {
 func (f *Feature) Register(b *bot.Bot) {
 	if f.cookie == "" {
 		f.log.Warn("bdsmlr invites have no usable BDSMLR_SESSION; the command will explain how to set it")
+	} else if f.userLogin == "" {
+		f.log.Warn("bdsmlr invites have no wordpress_logged_in_ cookie in BDSMLR_SESSION; the account username cannot be read")
 	}
 	b.AddUserCommand(command(), f.handleCommand)
 }
