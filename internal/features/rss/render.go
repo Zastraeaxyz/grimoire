@@ -23,16 +23,11 @@ const (
 // buildMessage renders one feed item, downloading its media so the post does
 // not depend on expiring CDN links.
 func (f *Feature) buildMessage(ctx context.Context, feed *store.Feed, item FeedItem) *discordgo.MessageSend {
-	text := htmlToText(item.Content)
-	if text == "" {
-		text = htmlToText(item.Summary)
-	}
-
 	embed := &discordgo.MessageEmbed{
 		Color:       embedColor,
 		Author:      &discordgo.MessageEmbedAuthor{Name: feedDisplayName(feed), URL: item.Link},
 		Title:       truncateText(displayTitle(item), embedTitleLimit),
-		Description: truncateText(text, embedDescriptionLimit),
+		Description: embedDescription(item),
 		Footer:      &discordgo.MessageEmbedFooter{Text: footerText(item)},
 	}
 	if item.Link != "" {
@@ -55,6 +50,43 @@ func (f *Feature) buildMessage(ctx context.Context, feed *store.Feed, item FeedI
 		})
 	}
 	return msg
+}
+
+// embedDescription renders the post body with every category as a hashtag.
+// The body gives up room first so the tags are never cut for space.
+func embedDescription(item FeedItem) string {
+	text := htmlToText(item.Content)
+	if text == "" {
+		text = htmlToText(item.Summary)
+	}
+
+	tags := categoryTags(item.Categories)
+	if tags == "" {
+		return truncateText(text, embedDescriptionLimit)
+	}
+	if text == "" {
+		return truncateText(tags, embedDescriptionLimit)
+	}
+
+	room := embedDescriptionLimit - len([]rune(tags)) - 2 - 3 // blank line and ellipsis
+	if room <= 0 {
+		return truncateText(tags, embedDescriptionLimit)
+	}
+	return truncateText(text, room) + "\n\n" + tags
+}
+
+// categoryTags formats categories as "#name" tokens. Categories are already
+// normalized and deduplicated by the parser.
+func categoryTags(categories []string) string {
+	tags := make([]string, 0, len(categories))
+	for _, category := range categories {
+		name := strings.TrimSpace(strings.TrimLeft(category, "#"))
+		if name == "" {
+			continue
+		}
+		tags = append(tags, "#"+name)
+	}
+	return strings.Join(tags, " ")
 }
 
 // displayTitle avoids repeating machine-generated titles that carry no

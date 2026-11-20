@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,10 +27,11 @@ func TestBuildMessageUsesFeedAndPostMetadata(t *testing.T) {
 		URL:   "https://imaglr.com/profile/zastraea/rss",
 	}
 	item := FeedItem{
-		Title:     "zastraea - image",
-		Link:      "https://imaglr.com/post/109448475",
-		Content:   "<p>Clear statements</p><img src=\"https://cdn.example/a.jpg\"/>",
-		Published: time.Date(2026, 11, 17, 16, 51, 4, 0, time.UTC),
+		Title:      "zastraea - image",
+		Link:       "https://imaglr.com/post/109448475",
+		Content:    "<p>Clear statements</p><img src=\"https://cdn.example/a.jpg\"/>",
+		Categories: []string{"cats", "#keyholder"},
+		Published:  time.Date(2026, 11, 17, 16, 51, 4, 0, time.UTC),
 	}
 
 	msg := f.buildMessage(context.Background(), feed, item)
@@ -44,7 +46,7 @@ func TestBuildMessageUsesFeedAndPostMetadata(t *testing.T) {
 	if embed.Title != "New post" {
 		t.Fatalf("title = %q", embed.Title)
 	}
-	if embed.Description != "Clear statements" {
+	if embed.Description != "Clear statements\n\n#cats #keyholder" {
 		t.Fatalf("description = %q", embed.Description)
 	}
 	if embed.URL != item.Link {
@@ -58,6 +60,54 @@ func TestBuildMessageUsesFeedAndPostMetadata(t *testing.T) {
 	}
 	if len(msg.Files) != 0 {
 		t.Fatalf("files = %d, want 0 without a reachable CDN", len(msg.Files))
+	}
+}
+
+func TestEmbedDescriptionIncludesEveryCategory(t *testing.T) {
+	cases := []struct {
+		name string
+		item FeedItem
+		want string
+	}{
+		{
+			name: "body and tags",
+			item: FeedItem{Content: "<p>Hi</p>", Categories: []string{"one", "two"}},
+			want: "Hi\n\n#one #two",
+		},
+		{
+			name: "tags without a body",
+			item: FeedItem{Categories: []string{"one", "two"}},
+			want: "#one #two",
+		},
+		{
+			name: "summary body and tags",
+			item: FeedItem{Summary: "Fallback", Categories: []string{"one"}},
+			want: "Fallback\n\n#one",
+		},
+		{
+			name: "no categories",
+			item: FeedItem{Content: "<p>Hi</p>"},
+			want: "Hi",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := embedDescription(tc.item); got != tc.want {
+				t.Fatalf("embedDescription = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEmbedDescriptionKeepsTagsWhenBodyIsLong(t *testing.T) {
+	body := strings.Repeat("word ", embedDescriptionLimit)
+	got := embedDescription(FeedItem{Content: body, Categories: []string{"one", "two"}})
+
+	if !strings.HasSuffix(got, "\n\n#one #two") {
+		t.Fatalf("description lost its tags: %q", got[len(got)-40:])
+	}
+	if runes := len([]rune(got)); runes > embedDescriptionLimit {
+		t.Fatalf("description = %d runes, limit %d", runes, embedDescriptionLimit)
 	}
 }
 

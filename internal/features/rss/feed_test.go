@@ -1,6 +1,7 @@
 package rss
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,9 @@ const bdsmlrFixture = `<?xml version="1.0" encoding="UTF-8"?>
       <link>https://bdsmlr.com/post/877982930</link>
       <guid isPermaLink="false">https://bdsmlr.com/post/877982930</guid>
       <dc:creator><![CDATA[zastraeachastity]]></dc:creator>
+      <category><![CDATA[Chastity]]></category>
+      <category> Femdom </category>
+      <category>chastity</category>
       <pubDate>Mon, 16 Nov 2026 08:46:37 GMT</pubDate>
       <enclosure url="https://cdn.example/bdsmlr-1.jpg?e=1&amp;t=sig" length="0" type="image/jpeg"/>
       <media:content url="https://cdn.example/bdsmlr-1.jpg?e=1&amp;t=sig" type="image/jpeg" medium="image"/>
@@ -99,6 +103,9 @@ const atomFixture = `<?xml version="1.0" encoding="utf-8"?>
     <published>2026-11-16T08:46:37Z</published>
     <updated>2026-11-16T09:00:00Z</updated>
     <author><name>Zastraea</name></author>
+    <category term="cats" label="Cats"/>
+    <category term="key holder"/>
+    <category term="cats"/>
     <content type="html">&lt;p&gt;Hello &amp;amp; welcome&lt;/p&gt;</content>
   </entry>
 </feed>`
@@ -127,6 +134,9 @@ func TestParseRSSMediaAndDedupe(t *testing.T) {
 	}
 	if first.Author != "zastraeachastity" {
 		t.Fatalf("author = %q", first.Author)
+	}
+	if got := strings.Join(first.Categories, ","); got != "Chastity,Femdom" {
+		t.Fatalf("categories = %q, want Chastity,Femdom", got)
 	}
 	if got := first.Published.UTC(); !got.Equal(time.Date(2026, 11, 16, 8, 46, 37, 0, time.UTC)) {
 		t.Fatalf("published = %v", got)
@@ -214,6 +224,9 @@ func TestParseAtom(t *testing.T) {
 	}
 	if item.Author != "Zastraea" {
 		t.Fatalf("author = %q", item.Author)
+	}
+	if got := strings.Join(item.Categories, ","); got != "cats,key holder" {
+		t.Fatalf("categories = %q, want cats,key holder", got)
 	}
 	if got := htmlToText(item.Content); got != "Hello & welcome" {
 		t.Fatalf("content = %q", got)

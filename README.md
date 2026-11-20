@@ -18,7 +18,8 @@ Discord bot for the zxyz server, built on
   videos, so media survives expiring CDN links and hotlink blocks. Media over
   the size cap stays on the source post, which the embed links to. bdsmlr posts
   are resolved through bdsmlr's post API, because the feed can advertise an
-  original GIF that now exists only as an MP4.
+  original GIF that now exists only as an MP4. Every item's categories are
+  listed as hashtags in the embed description.
 - **Reddit feeds**: reddit retired its `.rss` endpoints, so `/rss add` also
   accepts subreddit, user, and search URLs and reads their newest-first
   results directly. Every Reddit post gets a **Load full post** or **Load

@@ -21,14 +21,15 @@ type Media struct {
 
 // FeedItem is a normalized entry from an RSS or Atom feed.
 type FeedItem struct {
-	GUID      string
-	Title     string
-	Link      string
-	Author    string
-	Content   string
-	Summary   string
-	Published time.Time
-	Media     []Media
+	GUID       string
+	Title      string
+	Link       string
+	Author     string
+	Content    string
+	Summary    string
+	Categories []string
+	Published  time.Time
+	Media      []Media
 
 	// Reddit marks a post read from a reddit listing or post detail. Gallery
 	// marks a reddit gallery, which only shows its cover until the reader
@@ -96,6 +97,7 @@ type rssItem struct {
 	Title       string     `xml:"title"`
 	Link        string     `xml:"link"`
 	GUID        rssGUID    `xml:"guid"`
+	Categories  []string   `xml:"category"`
 	Description string     `xml:"description"`
 	Encoded     string     `xml:"http://purl.org/rss/1.0/modules/content/ encoded"`
 	PubDate     string     `xml:"pubDate"`
@@ -128,12 +130,13 @@ func parseRSS(data []byte) (*parsedFeed, error) {
 	}
 	for _, raw := range doc.Channel.Items {
 		item := FeedItem{
-			Title:     raw.Title,
-			Link:      strings.TrimSpace(raw.Link),
-			Author:    strings.TrimSpace(raw.Creator),
-			Content:   raw.Encoded,
-			Summary:   raw.Description,
-			Published: parseTime(raw.PubDate),
+			Title:      raw.Title,
+			Link:       strings.TrimSpace(raw.Link),
+			Author:     strings.TrimSpace(raw.Creator),
+			Content:    raw.Encoded,
+			Summary:    raw.Description,
+			Categories: normalizeCategories(raw.Categories),
+			Published:  parseTime(raw.PubDate),
 		}
 		if item.Content == "" {
 			item.Content = raw.Description
@@ -189,8 +192,21 @@ type atomEntry struct {
 	Author    struct {
 		Name atomText `xml:"http://www.w3.org/2005/Atom name"`
 	} `xml:"http://www.w3.org/2005/Atom author"`
-	Media     []rssMedia `xml:"http://search.yahoo.com/mrss/ content"`
-	Thumbnail []rssMedia `xml:"http://search.yahoo.com/mrss/ thumbnail"`
+	Media     []rssMedia     `xml:"http://search.yahoo.com/mrss/ content"`
+	Thumbnail []rssMedia     `xml:"http://search.yahoo.com/mrss/ thumbnail"`
+	Category  []atomCategory `xml:"http://www.w3.org/2005/Atom category"`
+}
+
+type atomCategory struct {
+	Term  string `xml:"term,attr"`
+	Label string `xml:"label,attr"`
+}
+
+func (c atomCategory) name() string {
+	if term := strings.TrimSpace(c.Term); term != "" {
+		return term
+	}
+	return strings.TrimSpace(c.Label)
 }
 
 type atomLink struct {
@@ -271,12 +287,18 @@ func parseAtom(data []byte) (*parsedFeed, error) {
 		SiteURL: atomSiteURL(doc.Links),
 	}
 	for _, raw := range doc.Entries {
+		var categories []string
+		for _, category := range raw.Category {
+			categories = append(categories, category.name())
+		}
+
 		item := FeedItem{
-			Title:     raw.Title.text(),
-			Author:    strings.TrimSpace(raw.Author.Name.text()),
-			Content:   raw.Content.text(),
-			Summary:   raw.Summary.text(),
-			Published: parseTime(raw.Published),
+			Title:      raw.Title.text(),
+			Author:     strings.TrimSpace(raw.Author.Name.text()),
+			Content:    raw.Content.text(),
+			Summary:    raw.Summary.text(),
+			Categories: normalizeCategories(categories),
+			Published:  parseTime(raw.Published),
 		}
 		if item.Content == "" {
 			item.Content = item.Summary
@@ -527,6 +549,26 @@ func isDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+// normalizeCategories trims category names, collapses their whitespace, and
+// drops empty or duplicate entries while keeping feed order.
+func normalizeCategories(raw []string) []string {
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, value := range raw {
+		name := strings.Join(strings.Fields(value), " ")
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }
 
 // parseTime accepts the date formats seen in RSS and Atom feeds.
