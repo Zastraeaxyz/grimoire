@@ -461,3 +461,66 @@ func TestOpenMigratesVersionThreeDatabase(t *testing.T) {
 		t.Fatalf("RecordBDSMLRInvite after migration: %v", err)
 	}
 }
+
+// TestOpenMigratesVersionFiveDatabase covers the deployed v5 schema, which
+// predates the bot metadata channel. The upgrade must add the column without
+// touching existing settings.
+func TestOpenMigratesVersionFiveDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grimoire.db")
+
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	stmts := []string{
+		`CREATE TABLE guild_settings (
+			guild_id TEXT PRIMARY KEY,
+			welcome_channel_id TEXT NOT NULL DEFAULT '',
+			base_role_id TEXT NOT NULL DEFAULT '',
+			rules_channel_id TEXT NOT NULL DEFAULT '',
+			panel_message_id TEXT NOT NULL DEFAULT '',
+			panel_body TEXT NOT NULL DEFAULT '',
+			user_command_role_id TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+		)`,
+		`INSERT INTO guild_settings (guild_id, welcome_channel_id, base_role_id, user_command_role_id)
+			VALUES ('guild-1', 'channel-1', 'role-old', 'role-command')`,
+		`PRAGMA user_version = 5`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("preparing v5 database: %v", err)
+		}
+	}
+	db.Close()
+
+	st, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	ctx := context.Background()
+	settings, err := st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings after migration: %v", err)
+	}
+	if settings == nil ||
+		settings.WelcomeChannelID != "channel-1" ||
+		settings.BaseRoleID != "role-old" ||
+		settings.UserCommandRoleID != "role-command" ||
+		settings.BotMetaChannelID != "" {
+		t.Fatalf("existing settings changed unexpectedly: %+v", settings)
+	}
+
+	if err := st.SetBotMetaChannel(ctx, "guild-1", "meta-1"); err != nil {
+		t.Fatalf("SetBotMetaChannel after migration: %v", err)
+	}
+	settings, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings after setting the channel: %v", err)
+	}
+	if settings.BotMetaChannelID != "meta-1" {
+		t.Fatalf("BotMetaChannelID = %q, want meta-1", settings.BotMetaChannelID)
+	}
+}

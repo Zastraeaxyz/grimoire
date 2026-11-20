@@ -142,6 +142,7 @@ func (f *Feature) setup(ctx context.Context, s *discordgo.Session, i *discordgo.
 		settings.PanelBody = old.PanelBody
 		settings.PanelMessageID = old.PanelMessageID
 		settings.UserCommandRoleID = old.UserCommandRoleID
+		settings.BotMetaChannelID = old.BotMetaChannelID
 	}
 	if rulesID != "" {
 		settings.RulesChannelID = rulesID

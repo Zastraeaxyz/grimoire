@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 // Store is the SQLite-backed persistence layer.
 type Store struct {
@@ -30,6 +30,7 @@ type GuildSettings struct {
 	PanelMessageID    string
 	PanelBody         string
 	UserCommandRoleID string
+	BotMetaChannelID  string
 	UpdatedAt         time.Time
 }
 
@@ -173,6 +174,12 @@ func migrate(ctx context.Context, db *sql.DB) error {
 					ON bdsmlr_invites (guild_id, user_id, sent_at)`,
 			},
 		},
+		{
+			version: 6,
+			statements: []string{
+				`ALTER TABLE guild_settings ADD COLUMN bot_meta_channel_id TEXT NOT NULL DEFAULT ''`,
+			},
+		},
 	}
 
 	for _, step := range steps {
@@ -203,7 +210,8 @@ func (s *Store) Close() error {
 func (s *Store) GetGuildSettings(ctx context.Context, guildID string) (*GuildSettings, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT guild_id, welcome_channel_id, base_role_id, rules_channel_id,
-		       panel_message_id, panel_body, user_command_role_id, updated_at
+		       panel_message_id, panel_body, user_command_role_id,
+		       bot_meta_channel_id, updated_at
 		FROM guild_settings
 		WHERE guild_id = ?`, guildID)
 
@@ -219,6 +227,7 @@ func (s *Store) GetGuildSettings(ctx context.Context, guildID string) (*GuildSet
 		&st.PanelMessageID,
 		&st.PanelBody,
 		&st.UserCommandRoleID,
+		&st.BotMetaChannelID,
 		&updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -236,8 +245,9 @@ func (s *Store) SaveGuildSettings(ctx context.Context, st *GuildSettings) error 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO guild_settings (
 			guild_id, welcome_channel_id, base_role_id, rules_channel_id,
-			panel_message_id, panel_body, user_command_role_id, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())
+			panel_message_id, panel_body, user_command_role_id,
+			bot_meta_channel_id, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
 		ON CONFLICT(guild_id) DO UPDATE SET
 			welcome_channel_id = excluded.welcome_channel_id,
 			base_role_id = excluded.base_role_id,
@@ -245,6 +255,7 @@ func (s *Store) SaveGuildSettings(ctx context.Context, st *GuildSettings) error 
 			panel_message_id = excluded.panel_message_id,
 			panel_body = excluded.panel_body,
 			user_command_role_id = excluded.user_command_role_id,
+			bot_meta_channel_id = excluded.bot_meta_channel_id,
 			updated_at = unixepoch()`,
 		st.GuildID,
 		st.WelcomeChannelID,
@@ -253,6 +264,7 @@ func (s *Store) SaveGuildSettings(ctx context.Context, st *GuildSettings) error 
 		st.PanelMessageID,
 		st.PanelBody,
 		st.UserCommandRoleID,
+		st.BotMetaChannelID,
 	)
 	return err
 }
@@ -268,6 +280,20 @@ func (s *Store) SetUserCommandRole(ctx context.Context, guildID, roleID string) 
 			user_command_role_id = excluded.user_command_role_id,
 			updated_at = unixepoch()`,
 		guildID, roleID)
+	return err
+}
+
+// SetBotMetaChannel records where the bot posts its build metadata. An empty
+// channel turns the startup post off. The upsert lets an admin configure it
+// before the welcome panel exists.
+func (s *Store) SetBotMetaChannel(ctx context.Context, guildID, channelID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO guild_settings (guild_id, bot_meta_channel_id, updated_at)
+		VALUES (?, ?, unixepoch())
+		ON CONFLICT(guild_id) DO UPDATE SET
+			bot_meta_channel_id = excluded.bot_meta_channel_id,
+			updated_at = unixepoch()`,
+		guildID, channelID)
 	return err
 }
 

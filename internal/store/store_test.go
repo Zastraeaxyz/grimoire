@@ -22,6 +22,34 @@ func newTestStore(t *testing.T) *Store {
 	return st
 }
 
+func TestSetBotMetaChannel(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	// The upsert must work before any other settings row exists.
+	if err := st.SetBotMetaChannel(ctx, "guild-1", "meta-1"); err != nil {
+		t.Fatalf("SetBotMetaChannel: %v", err)
+	}
+	settings, err := st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings: %v", err)
+	}
+	if settings == nil || settings.BotMetaChannelID != "meta-1" {
+		t.Fatalf("BotMetaChannelID = %+v, want meta-1", settings)
+	}
+
+	if err := st.SetBotMetaChannel(ctx, "guild-1", ""); err != nil {
+		t.Fatalf("clearing the bot metadata channel: %v", err)
+	}
+	settings, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings after clearing: %v", err)
+	}
+	if settings.BotMetaChannelID != "" {
+		t.Fatalf("BotMetaChannelID = %q, want empty", settings.BotMetaChannelID)
+	}
+}
+
 func TestGetGuildSettingsMissing(t *testing.T) {
 	st := newTestStore(t)
 	settings, err := st.GetGuildSettings(context.Background(), "123")
@@ -44,6 +72,7 @@ func TestSaveAndLoadSettings(t *testing.T) {
 		RulesChannelID:    "rules-1",
 		PanelBody:         "custom body",
 		UserCommandRoleID: "command-role-1",
+		BotMetaChannelID:  "meta-1",
 	}
 	if err := st.SaveGuildSettings(ctx, want); err != nil {
 		t.Fatalf("SaveGuildSettings: %v", err)
@@ -60,7 +89,8 @@ func TestSaveAndLoadSettings(t *testing.T) {
 		got.BaseRoleID != want.BaseRoleID ||
 		got.RulesChannelID != want.RulesChannelID ||
 		got.PanelBody != want.PanelBody ||
-		got.UserCommandRoleID != want.UserCommandRoleID {
+		got.UserCommandRoleID != want.UserCommandRoleID ||
+		got.BotMetaChannelID != want.BotMetaChannelID {
 		t.Fatalf("settings mismatch: got %+v want %+v", got, want)
 	}
 	if time.Since(got.UpdatedAt) > time.Minute {
