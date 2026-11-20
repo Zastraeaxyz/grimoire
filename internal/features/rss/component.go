@@ -46,15 +46,26 @@ func (f *Feature) handleRedditComponent(ctx context.Context, s *discordgo.Sessio
 		Title: redditFeedTitle(item.Link),
 		URL:   item.Link,
 	}
-	msg := f.buildMessage(workCtx, feed, item)
+	messages := f.buildMessages(workCtx, feed, item)
+	first := messages[0]
 
-	if err := editInteractionResponse(s, i, "", msg.Embeds, msg.Files); err != nil {
+	if err := editInteractionResponse(s, i, "", first.Embeds, first.Files); err != nil {
 		return err
+	}
+	for _, extra := range messages[1:] {
+		if _, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+			Files: extra.Files,
+		}); err != nil {
+			f.log.Warn("posting extra reddit media failed",
+				"post_id", postID,
+				"err", err,
+			)
+		}
 	}
 	// Keep the original when it held the only media: if every download
 	// failed, deleting it would replace a cover with a text-only post. The
 	// button stays available so the load can be retried.
-	if len(msg.Files) > 0 || len(item.Media) == 0 {
+	if len(first.Files) > 0 || len(item.Media) == 0 {
 		f.deleteOriginalMessage(s, i)
 	}
 	return nil

@@ -20,9 +20,11 @@ const (
 	embedAuthorLimit      = 200
 )
 
-// buildMessage renders one feed item, downloading its media so the post does
-// not depend on expiring CDN links.
-func (f *Feature) buildMessage(ctx context.Context, feed *store.Feed, item FeedItem) *discordgo.MessageSend {
+// buildMessages renders one feed item, downloading its media so the post does
+// not depend on expiring CDN links. A lone image goes inside the embed; a set
+// keeps its images as attachments so Discord shows them as one gallery, with
+// extra messages once the per-message attachment limit is reached.
+func (f *Feature) buildMessages(ctx context.Context, feed *store.Feed, item FeedItem) []*discordgo.MessageSend {
 	embed := &discordgo.MessageEmbed{
 		Color:       embedColor,
 		Author:      &discordgo.MessageEmbedAuthor{Name: feedDisplayName(feed), URL: item.Link},
@@ -38,18 +40,55 @@ func (f *Feature) buildMessage(ctx context.Context, feed *store.Feed, item FeedI
 		embed.Timestamp = item.Published.UTC().Format(time.RFC3339)
 	}
 
+	media := f.downloadMedia(ctx, item)
+	if len(media) == 1 && media[0].isImage() {
+		embed.Image = &discordgo.MessageEmbedImage{URL: "attachment://" + media[0].FileName}
+	}
+
 	msg := &discordgo.MessageSend{
 		Embeds:     []*discordgo.MessageEmbed{embed},
 		Components: redditLoadButton(item),
 	}
 
-	for _, media := range f.downloadMedia(ctx, item) {
-		msg.Files = append(msg.Files, &discordgo.File{
-			Name:   media.FileName,
-			Reader: bytes.NewReader(media.Data),
+	if len(media) <= maxAttachments {
+		msg.Files = mediaFiles(media)
+		return []*discordgo.MessageSend{msg}
+	}
+
+	msg.Files = mediaFiles(media[:maxAttachments])
+	messages := []*discordgo.MessageSend{msg}
+	for start := maxAttachments; start < len(media); start += maxAttachments {
+		end := start + maxAttachments
+		if end > len(media) {
+			end = len(media)
+		}
+		messages = append(messages, &discordgo.MessageSend{Files: mediaFiles(media[start:end])})
+	}
+	return messages
+}
+
+func mediaFiles(media []downloadedMedia) []*discordgo.File {
+	files := make([]*discordgo.File, 0, len(media))
+	for _, m := range media {
+		files = append(files, &discordgo.File{
+			Name:   m.FileName,
+			Reader: bytes.NewReader(m.Data),
 		})
 	}
-	return msg
+	return files
+}
+
+// clearAttachmentImages drops embed images that point at uploaded files, for
+// the text-only retry when Discord rejects the upload.
+func clearAttachmentImages(embeds []*discordgo.MessageEmbed) {
+	for _, embed := range embeds {
+		if embed.Image != nil && strings.HasPrefix(embed.Image.URL, "attachment://") {
+			embed.Image = nil
+		}
+		if embed.Thumbnail != nil && strings.HasPrefix(embed.Thumbnail.URL, "attachment://") {
+			embed.Thumbnail = nil
+		}
+	}
 }
 
 // embedDescription renders the post body with every category as a hashtag.

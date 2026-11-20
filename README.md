@@ -16,7 +16,10 @@ Discord bot for the zxyz server, built on
 - **RSS feeds**: `/rss add` follows an RSS 2.0 or Atom feed and posts new items
   into a channel. Posts keep the feed's text and re-upload its images and short
   videos, so media survives expiring CDN links and hotlink blocks. Media over
-  the size cap stays on the source post, which the embed links to. bdsmlr posts
+  the size cap stays on the source post, which the embed links to. A post with
+  one image shows it inside the embed; galleries keep their images as message
+  attachments so Discord's image viewer can step through the set, with extra
+  messages once ten attachments are reached. bdsmlr posts
   are resolved through bdsmlr's post API, because the feed can advertise an
   original GIF that now exists only as an MP4. Every item's categories are
   listed as hashtags in the embed description.

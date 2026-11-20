@@ -126,31 +126,42 @@ func (f *Feature) pollFeed(parent context.Context, s *discordgo.Session, feed *s
 // postItem sends one item with its downloaded media. If Discord rejects the
 // upload, the item is retried as a text-only embed so the post is not lost.
 func (f *Feature) postItem(ctx context.Context, s *discordgo.Session, feed *store.Feed, item FeedItem) (string, error) {
-	msg := f.buildMessage(ctx, feed, item)
-	if len(msg.Files) == 0 {
-		sent, err := s.ChannelMessageSendComplex(feed.ChannelID, msg)
-		if err != nil {
+	messages := f.buildMessages(ctx, feed, item)
+	first := messages[0]
+
+	sent, err := s.ChannelMessageSendComplex(feed.ChannelID, first)
+	if err != nil {
+		if len(first.Files) == 0 {
 			return "", err
+		}
+
+		f.log.Warn("posting feed item with media failed; retrying without attachments",
+			"feed_id", feed.ID,
+			"guid", item.GUID,
+			"err", err,
+		)
+		// The upload failed, so any further media-only messages would fail too.
+		clearAttachmentImages(first.Embeds)
+		sent, fallbackErr := s.ChannelMessageSendComplex(feed.ChannelID, &discordgo.MessageSend{
+			Embeds:     first.Embeds,
+			Components: first.Components,
+		})
+		if fallbackErr != nil {
+			return "", fmt.Errorf("%w (without media: %v)", err, fallbackErr)
 		}
 		return sent.ID, nil
 	}
 
-	sent, err := s.ChannelMessageSendComplex(feed.ChannelID, msg)
-	if err == nil {
-		return sent.ID, nil
-	}
-
-	f.log.Warn("posting feed item with media failed; retrying without attachments",
-		"feed_id", feed.ID,
-		"guid", item.GUID,
-		"err", err,
-	)
-	sent, fallbackErr := s.ChannelMessageSendComplex(feed.ChannelID, &discordgo.MessageSend{
-		Embeds:     msg.Embeds,
-		Components: msg.Components,
-	})
-	if fallbackErr != nil {
-		return "", fmt.Errorf("%w (without media: %v)", err, fallbackErr)
+	for _, extra := range messages[1:] {
+		if _, err := s.ChannelMessageSendComplex(feed.ChannelID, extra); err != nil {
+			// The main post is already live; retrying the item would duplicate
+			// it, so keep the posted item and leave the overflow undelivered.
+			f.log.Warn("posting extra feed media failed",
+				"feed_id", feed.ID,
+				"guid", item.GUID,
+				"err", err,
+			)
+		}
 	}
 	return sent.ID, nil
 }

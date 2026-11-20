@@ -5,9 +5,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
 
 	"grimoire/internal/store"
 )
@@ -34,7 +37,11 @@ func TestBuildMessageUsesFeedAndPostMetadata(t *testing.T) {
 		Published:  time.Date(2026, 11, 17, 16, 51, 4, 0, time.UTC),
 	}
 
-	msg := f.buildMessage(context.Background(), feed, item)
+	messages := f.buildMessages(context.Background(), feed, item)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d", len(messages))
+	}
+	msg := messages[0]
 	if len(msg.Embeds) != 1 {
 		t.Fatalf("embeds = %d", len(msg.Embeds))
 	}
@@ -61,6 +68,107 @@ func TestBuildMessageUsesFeedAndPostMetadata(t *testing.T) {
 	if len(msg.Files) != 0 {
 		t.Fatalf("files = %d, want 0 without a reachable CDN", len(msg.Files))
 	}
+}
+
+func TestBuildMessagesEmbedsASingleImage(t *testing.T) {
+	server := imageServer(t)
+	defer server.Close()
+
+	f := testFeature()
+	f.httpClient = server.Client()
+
+	messages := f.buildMessages(context.Background(), &store.Feed{Title: "Feed"}, FeedItem{
+		GUID:  "one-image",
+		Media: []Media{{URL: server.URL + "/1.png"}},
+	})
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d", len(messages))
+	}
+	msg := messages[0]
+	if msg.Embeds[0].Image == nil || msg.Embeds[0].Image.URL != "attachment://media-1.png" {
+		t.Fatalf("embed image = %+v", msg.Embeds[0].Image)
+	}
+	if len(msg.Files) != 1 || msg.Files[0].Name != "media-1.png" {
+		t.Fatalf("files = %+v", msg.Files)
+	}
+}
+
+func TestBuildMessagesKeepsGalleryAsAttachments(t *testing.T) {
+	server := imageServer(t)
+	defer server.Close()
+
+	f := testFeature()
+	f.httpClient = server.Client()
+
+	messages := f.buildMessages(context.Background(), &store.Feed{Title: "Feed"}, FeedItem{
+		GUID: "gallery",
+		Media: []Media{
+			{URL: server.URL + "/1.jpg"},
+			{URL: server.URL + "/2.jpg"},
+			{URL: server.URL + "/3.jpg"},
+		},
+	})
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d", len(messages))
+	}
+	msg := messages[0]
+	if msg.Embeds[0].Image != nil {
+		t.Fatalf("gallery got an embed image: %+v", msg.Embeds[0].Image)
+	}
+	if len(msg.Files) != 3 {
+		t.Fatalf("files = %d, want 3", len(msg.Files))
+	}
+}
+
+func TestBuildMessagesChunksLargeGalleries(t *testing.T) {
+	server := imageServer(t)
+	defer server.Close()
+
+	f := testFeature()
+	f.httpClient = server.Client()
+
+	media := make([]Media, 12)
+	for i := range media {
+		media[i] = Media{URL: server.URL + "/image.jpg"}
+	}
+
+	messages := f.buildMessages(context.Background(), &store.Feed{Title: "Feed"}, FeedItem{
+		GUID:  "big-gallery",
+		Media: media,
+	})
+	if len(messages) != 2 {
+		t.Fatalf("messages = %d, want 2", len(messages))
+	}
+	if len(messages[0].Files) != maxAttachments || len(messages[0].Embeds) != 1 {
+		t.Fatalf("first message = %d files, %d embeds", len(messages[0].Files), len(messages[0].Embeds))
+	}
+	if len(messages[1].Files) != 2 || len(messages[1].Embeds) != 0 {
+		t.Fatalf("second message = %d files, %d embeds", len(messages[1].Files), len(messages[1].Embeds))
+	}
+}
+
+func TestClearAttachmentImages(t *testing.T) {
+	embeds := []*discordgo.MessageEmbed{{
+		Image:     &discordgo.MessageEmbedImage{URL: "attachment://media-1.png"},
+		Thumbnail: &discordgo.MessageEmbedThumbnail{URL: "attachment://media-2.png"},
+	}}
+	clearAttachmentImages(embeds)
+	if embeds[0].Image != nil || embeds[0].Thumbnail != nil {
+		t.Fatalf("attachment images were kept: %+v", embeds[0])
+	}
+}
+
+// imageServer serves a tiny valid image for any path.
+func imageServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".png") {
+			w.Header().Set("Content-Type", "image/png")
+		} else {
+			w.Header().Set("Content-Type", "image/jpeg")
+		}
+		_, _ = io.WriteString(w, "image-bytes")
+	}))
 }
 
 func TestEmbedDescriptionIncludesEveryCategory(t *testing.T) {

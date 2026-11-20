@@ -22,8 +22,24 @@ const (
 
 // downloadedMedia is an attachment ready to hand to Discord.
 type downloadedMedia struct {
-	FileName string
-	Data     []byte
+	FileName    string
+	ContentType string
+	Data        []byte
+}
+
+// isImage reports whether Discord can render the attachment as an embed image.
+func (m downloadedMedia) isImage() bool {
+	if strings.HasPrefix(m.ContentType, "image/") {
+		return true
+	}
+	if m.ContentType != "" && m.ContentType != "application/octet-stream" {
+		return false
+	}
+	switch strings.ToLower(path.Ext(m.FileName)) {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif":
+		return true
+	}
+	return false
 }
 
 // downloadMedia fetches the images and videos for an item. Failures are
@@ -42,10 +58,6 @@ func (f *Feature) downloadMedia(ctx context.Context, item FeedItem) []downloaded
 	)
 
 	for i, candidate := range media {
-		if len(files) >= maxAttachments {
-			break
-		}
-
 		data, contentType, err := f.downloadOne(ctx, candidate.URL, f.maxAttachmentBytes)
 		if err != nil {
 			f.log.Debug("skipping unavailable feed media",
@@ -64,8 +76,9 @@ func (f *Feature) downloadMedia(ctx context.Context, item FeedItem) []downloaded
 
 		total += int64(len(data))
 		files = append(files, downloadedMedia{
-			FileName: fmt.Sprintf("media-%d%s", i+1, extensionFor(contentType, candidate.URL)),
-			Data:     data,
+			FileName:    fmt.Sprintf("media-%d%s", i+1, extensionFor(contentType, candidate.URL)),
+			ContentType: contentType,
+			Data:        data,
 		})
 	}
 	return files

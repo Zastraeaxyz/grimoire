@@ -403,15 +403,22 @@ func (f *Feature) test(ctx context.Context, s *discordgo.Session, i *discordgo.I
 	}
 
 	feed := &store.Feed{GuildID: f.guildID, URL: feedURL, ChannelID: i.ChannelID, Title: parsed.Title}
-	msg := f.buildMessage(ctx, feed, parsed.Items[0])
+	messages := f.buildMessages(ctx, feed, parsed.Items[0])
 
 	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
 		Content: "Preview of the newest item:",
-		Embeds:  msg.Embeds,
-		Files:   msg.Files,
+		Embeds:  messages[0].Embeds,
+		Files:   messages[0].Files,
 	})
 	if err != nil {
 		return bot.EditEphemeral(s, i, "I could not render that item: "+err.Error())
+	}
+	for _, extra := range messages[1:] {
+		if _, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+			Files: extra.Files,
+		}); err != nil {
+			f.log.Warn("posting extra preview media failed", "err", err)
+		}
 	}
 	return nil
 }
