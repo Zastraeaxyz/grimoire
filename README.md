@@ -40,7 +40,9 @@ Discord bot for the zxyz server, built on
 - `/rss check` - poll every feed now
 - `/settings command-role role:<role>` - choose the role that may run member
   commands, or omit `role` to limit them to server admins
-- `/settings status` - show the member command role
+- `/settings bot-meta channel:<channel>` - choose where the bot posts its build
+  version whenever it starts, or omit `channel` to turn the posts off
+- `/settings status` - show the member command role and metadata channel
 - `/bdsmlr invite email:<address>` - confirm and send a bdsmlr invitation
 
 Feeds are polled once an hour. Each item is recorded in SQLite by GUID, so a
@@ -157,6 +159,21 @@ invited email address is never posted publicly.
 never logged, and it needs to be refreshed when the account-site session
 expires.
 
+## Bot metadata
+
+`/settings bot-meta channel:<channel>` points the bot at a channel where it
+reports which build is running. The bot posts an embed with the value of
+`BUILD_VERSION` and its start time on the first gateway connection of every
+process, so a deploy is visible in the channel but reconnects do not repeat
+the post. Setting the channel posts once immediately, which proves the bot has
+View Channel, Send Messages, and Embed Links there. Omitting `channel` turns
+the posts off.
+
+`mise deploy` sets `BUILD_VERSION` to the short commit hash and commit subject
+before uploading, so each deploy reports the commit it was built from. The
+value is a plain string, so it can hold a release version instead once the
+project starts tagging releases.
+
 ## Configuration
 
 | Variable | Required | Default | Notes |
@@ -166,6 +183,7 @@ expires.
 | `DATABASE_PATH` | no | `./data/grimoire.db` | SQLite file (use `/data/grimoire.db` on Railway) |
 | `PORT` | no | `8080` | Health endpoint port |
 | `LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` |
+| `BUILD_VERSION` | no | `unknown` | Build label posted at startup; set by `mise deploy` |
 | `WELCOME_CHANNEL_ID` | no | | Seeds settings on first boot |
 | `BASE_ROLE_ID` | no | | Seeds settings on first boot |
 | `RSS_POLL_INTERVAL` | no | `1h` | Feed poll interval (`30m`, `2h`) |
