@@ -2,20 +2,31 @@ package settings
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 
 	"grimoire/internal/bot"
+	"grimoire/internal/buildinfo"
 	"grimoire/internal/store"
 )
 
+// metadataColor matches the welcome panel so server output stays consistent.
+const metadataColor = 0x7C3AED
+
 // Feature implements the server settings command.
 type Feature struct {
-	guildID string
-	store   *store.Store
-	log     *slog.Logger
+	guildID   string
+	store     *store.Store
+	log       *slog.Logger
+	startedAt time.Time
+
+	metaMu     sync.Mutex
+	metaPosted bool
 }
 
 // New builds the settings feature for a single guild.
@@ -23,12 +34,52 @@ func New(guildID string, st *store.Store, log *slog.Logger) *Feature {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Feature{guildID: guildID, store: st, log: log}
+	return &Feature{
+		guildID:   guildID,
+		store:     st,
+		log:       log,
+		startedAt: time.Now().UTC(),
+	}
 }
 
 // Register wires the feature into the bot.
 func (f *Feature) Register(b *bot.Bot) {
 	b.AddCommand(command(), f.handleCommand)
+	b.AddReadyHook(f.handleReady)
+}
+
+// handleReady posts the build metadata once per process start. A failed post
+// leaves the flag unset so the next READY retries; successful posts are not
+// repeated on reconnects.
+func (f *Feature) handleReady(ctx context.Context, s *discordgo.Session) error {
+	f.metaMu.Lock()
+	posted := f.metaPosted
+	f.metaMu.Unlock()
+	if posted {
+		return nil
+	}
+
+	settings, err := f.store.GetGuildSettings(ctx, f.guildID)
+	if err != nil {
+		return fmt.Errorf("loading bot metadata settings: %w", err)
+	}
+	if settings == nil || settings.BotMetaChannelID == "" {
+		f.log.Debug("bot metadata channel not configured; skipping startup post")
+		return nil
+	}
+
+	if _, err := s.ChannelMessageSendEmbed(settings.BotMetaChannelID, f.metadataEmbed()); err != nil {
+		return fmt.Errorf("posting build metadata: %w", err)
+	}
+
+	f.metaMu.Lock()
+	f.metaPosted = true
+	f.metaMu.Unlock()
+	f.log.Info("posted build metadata",
+		"channel_id", settings.BotMetaChannelID,
+		"version", buildinfo.Version(),
+	)
+	return nil
 }
 
 func (f *Feature) handleCommand(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
@@ -38,7 +89,7 @@ func (f *Feature) handleCommand(ctx context.Context, s *discordgo.Session, i *di
 
 	data := i.ApplicationCommandData()
 	if len(data.Options) == 0 {
-		return bot.ReplyEphemeral(s, i, "Use `/settings command-role` or `/settings status`.")
+		return bot.ReplyEphemeral(s, i, "Use `/settings command-role`, `/settings bot-meta`, or `/settings status`.")
 	}
 
 	if err := bot.DeferEphemeral(s, i); err != nil {
@@ -49,6 +100,8 @@ func (f *Feature) handleCommand(ctx context.Context, s *discordgo.Session, i *di
 	switch sub.Name {
 	case "command-role":
 		return f.commandRole(ctx, s, i, sub.Options)
+	case "bot-meta":
+		return f.botMeta(ctx, s, i, sub.Options)
 	case "status":
 		return f.status(ctx, s, i)
 	default:
@@ -88,26 +141,119 @@ func (f *Feature) commandRole(ctx context.Context, s *discordgo.Session, i *disc
 	))
 }
 
+func (f *Feature) botMeta(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, opts []*discordgo.ApplicationCommandInteractionDataOption) error {
+	channelID := ""
+	for _, opt := range opts {
+		if opt.Name != "channel" {
+			continue
+		}
+		ch := opt.ChannelValue(s)
+		if ch == nil {
+			return bot.EditEphemeral(s, i, "That channel no longer exists. Pick another one.")
+		}
+		channelID = ch.ID
+	}
+
+	if channelID != "" {
+		if err := f.validateMetaChannel(s, channelID); err != nil {
+			return bot.EditEphemeral(s, i, err.Error())
+		}
+	}
+	if err := f.store.SetBotMetaChannel(ctx, f.guildID, channelID); err != nil {
+		return fmt.Errorf("saving the bot metadata channel: %w", err)
+	}
+
+	if channelID == "" {
+		f.log.Info("bot metadata channel cleared")
+		return bot.EditEphemeral(s, i, "Build metadata posts are now off.")
+	}
+
+	msg, err := s.ChannelMessageSendEmbed(channelID, f.metadataEmbed())
+	if err != nil {
+		return fmt.Errorf("posting build metadata: %w", err)
+	}
+
+	// The test post covers this process, so a reconnect does not repeat it.
+	f.metaMu.Lock()
+	f.metaPosted = true
+	f.metaMu.Unlock()
+
+	f.log.Info("bot metadata channel set", "channel_id", channelID)
+	reply := fmt.Sprintf(
+		"Build metadata will be posted in <#%s> whenever I start.\nPosted now: https://discord.com/channels/%s/%s/%s",
+		channelID, f.guildID, channelID, msg.ID,
+	)
+	return bot.EditEphemeral(s, i, reply)
+}
+
+func (f *Feature) metadataEmbed() *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{
+		Title: "Grimoire online",
+		Color: metadataColor,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Version",
+				Value:  buildinfo.Version(),
+				Inline: true,
+			},
+			{
+				Name:   "Started",
+				Value:  fmt.Sprintf("<t:%d:f>", f.startedAt.Unix()),
+				Inline: true,
+			},
+		},
+	}
+}
+
+// validateMetaChannel checks that the bot can actually post its metadata in a
+// channel before saving it.
+func (f *Feature) validateMetaChannel(s *discordgo.Session, channelID string) error {
+	ch, err := s.Channel(channelID)
+	if err != nil {
+		return fmt.Errorf("I cannot see <#%s>. Check my channel permissions.", channelID)
+	}
+	if ch.Type != discordgo.ChannelTypeGuildText && ch.Type != discordgo.ChannelTypeGuildNews {
+		return errors.New("Pick a text channel for build metadata.")
+	}
+
+	perms, err := s.UserChannelPermissions(s.State.User.ID, channelID)
+	if err != nil {
+		return fmt.Errorf("checking my permissions in <#%s>: %w", channelID, err)
+	}
+	required := int64(discordgo.PermissionViewChannel |
+		discordgo.PermissionSendMessages |
+		discordgo.PermissionEmbedLinks)
+	if perms&required != required {
+		return fmt.Errorf("I need View Channel, Send Messages and Embed Links in <#%s>.", channelID)
+	}
+	return nil
+}
+
 func (f *Feature) status(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 	settings, err := f.store.GetGuildSettings(ctx, f.guildID)
 	if err != nil {
 		return fmt.Errorf("loading settings: %w", err)
 	}
-	if settings == nil || settings.UserCommandRoleID == "" {
-		return bot.EditEphemeral(s, i, "Member commands are limited to server admins. Set a role with `/settings command-role role:@Role`.")
+
+	role := "server admins only"
+	if settings != nil && settings.UserCommandRoleID != "" {
+		if f.roleExists(s, settings.UserCommandRoleID) {
+			role = fmt.Sprintf("<@&%s>", settings.UserCommandRoleID)
+		} else {
+			role = fmt.Sprintf("missing role `%s`; run `/settings command-role` again", settings.UserCommandRoleID)
+		}
 	}
 
-	roleID := settings.UserCommandRoleID
-	if !f.roleExists(s, roleID) {
-		return bot.EditEphemeral(s, i, fmt.Sprintf(
-			"Member commands are set to a role that no longer exists (`%s`). Run `/settings command-role` to pick another.",
-			roleID,
-		))
+	meta := "off"
+	if settings != nil && settings.BotMetaChannelID != "" {
+		meta = fmt.Sprintf("<#%s>", settings.BotMetaChannelID)
 	}
 
 	return bot.EditEphemeral(s, i, fmt.Sprintf(
-		"Member commands are available to <@&%s>. Server admins keep access.",
-		roleID,
+		"**Server settings**\n"+
+			"Member commands: %s\n"+
+			"Build metadata channel: %s",
+		role, meta,
 	))
 }
 

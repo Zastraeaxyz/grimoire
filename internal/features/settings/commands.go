@@ -29,8 +29,24 @@ func command() *discordgo.ApplicationCommand {
 			},
 			{
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Name:        "bot-meta",
+				Description: "Choose where the bot posts its build metadata at startup",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionChannel,
+						Name:        "channel",
+						Description: "Channel for build metadata (omit to turn it off)",
+						ChannelTypes: []discordgo.ChannelType{
+							discordgo.ChannelTypeGuildText,
+							discordgo.ChannelTypeGuildNews,
+						},
+					},
+				},
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Name:        "status",
-				Description: "Show the member command role",
+				Description: "Show the server settings",
 			},
 		},
 	}
