@@ -25,6 +25,8 @@ const (
 // keeps its images as attachments so Discord shows them as one gallery, with
 // extra messages once the per-message attachment limit is reached.
 func (f *Feature) buildMessages(ctx context.Context, feed *store.Feed, item FeedItem) []*discordgo.MessageSend {
+	item = f.loadRedditGallery(ctx, item)
+
 	embed := &discordgo.MessageEmbed{
 		Color:       embedColor,
 		Author:      &discordgo.MessageEmbedAuthor{Name: feedDisplayName(feed), URL: item.Link},

@@ -435,11 +435,72 @@ func TestParseRedditPostGallery(t *testing.T) {
 	if !item.Gallery || !item.Reddit {
 		t.Errorf("gallery flags = %v/%v", item.Gallery, item.Reddit)
 	}
+	if !item.MediaLoaded {
+		t.Error("gallery detail should mark its media as loaded")
+	}
 	if item.Media[0].URL != "https://preview.redd.it/m1.jpeg?width=1080&s=sig" {
 		t.Errorf("media[0] = %q", item.Media[0].URL)
 	}
 	if item.Media[1].URL != "https://preview.redd.it/m2.mp4?width=1080&s=sig" {
 		t.Errorf("media[1] = %q, want the MP4 for an animated image", item.Media[1].URL)
+	}
+}
+
+func TestLoadRedditGalleryUsesFullPost(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/comments/gal1.json") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, redditPostFixture)
+	}))
+	defer server.Close()
+
+	restore := redditBase
+	redditBase = server.URL
+	t.Cleanup(func() { redditBase = restore })
+
+	f := testFeature()
+	f.redditSession = "abc"
+	f.redditUserAgent = defaultRedditUserAgent
+
+	item := f.loadRedditGallery(context.Background(), FeedItem{
+		GUID:    "t3_gal1",
+		Reddit:  true,
+		Gallery: true,
+		Media:   []Media{{URL: "https://preview.redd.it/cover.jpeg"}},
+	})
+	if !item.MediaLoaded {
+		t.Fatal("media was not marked as loaded")
+	}
+	if len(item.Media) != 2 {
+		t.Fatalf("media = %d, want 2", len(item.Media))
+	}
+	if item.Media[0].URL != "https://preview.redd.it/m1.jpeg?width=1080&s=sig" {
+		t.Fatalf("media[0] = %q", item.Media[0].URL)
+	}
+	if redditLoadButton(item) != nil {
+		t.Fatal("loaded gallery still has a load button")
+	}
+}
+
+func TestLoadRedditGalleryKeepsCoverOnFailure(t *testing.T) {
+	f := testFeature()
+	item := f.loadRedditGallery(context.Background(), FeedItem{
+		GUID:    "t3_gal1",
+		Reddit:  true,
+		Gallery: true,
+		Media:   []Media{{URL: "https://preview.redd.it/cover.jpeg"}},
+	})
+	if item.MediaLoaded {
+		t.Fatal("failed lookup must not mark media as loaded")
+	}
+	if len(item.Media) != 1 {
+		t.Fatalf("media = %d, want the cover", len(item.Media))
+	}
+	if redditLoadButton(item) == nil {
+		t.Fatal("failed gallery should keep its fallback button")
 	}
 }
 
@@ -743,6 +804,10 @@ func TestRedditLoadButton(t *testing.T) {
 	}
 	if button.Label != "Load gallery" {
 		t.Errorf("gallery button label = %q", button.Label)
+	}
+
+	if got := redditLoadButton(FeedItem{GUID: "t3_abc123", Gallery: true, MediaLoaded: true}); got != nil {
+		t.Error("loaded galleries must not get the button")
 	}
 
 	if redditLoadButton(FeedItem{GUID: "not-a-reddit-post"}) != nil {

@@ -25,9 +25,10 @@ Discord bot for the zxyz server, built on
   listed as hashtags in the embed description.
 - **Reddit feeds**: reddit retired its `.rss` endpoints, so `/rss add` also
   accepts subreddit, user, and search URLs and reads their newest-first
-  results directly. Every Reddit post gets a **Load full post** or **Load
-  gallery** button that fetches the complete gallery or video on demand, then
-  removes the placeholder post. See [Reddit feeds](#reddit-feeds).
+  results directly. Galleries are fetched and posted in full right away;
+  videos and link posts keep a **Load full post** button that fetches the real
+  media on demand, then removes the placeholder post. See
+  [Reddit feeds](#reddit-feeds).
 - **bdsmlr invites**: `/bdsmlr invite email:<address>` sends a membership
   invitation through the account site. It needs `BDSMLR_SESSION` and the member
   command role, both covered in [bdsmlr invites](#bdsmlr-invites).
@@ -94,19 +95,20 @@ dropped so the feed always starts at the newest result. A
 `/r/<name>/search?q=...` URL is folded into a `subreddit:<name>` term, so
 `https://www.reddit.com/r/golang/search?q=generics` becomes a search for
 `subreddit:golang generics`. Search results use the same card, poster footer,
-gallery marker, and **Load full post** button as other Reddit feeds.
+up-front galleries, and **Load full post** button for videos as other Reddit
+feeds.
 
 `REDDIT_INCLUDE_NSFW` defaults to `true`, so NSFW communities and profiles can
 be followed. It sends Reddit's `over18` cookie and `include_over_18=on` unless
 the URL already sets `include_over_18` itself. Turn it off to keep the bot out
 of NSFW listings entirely.
 
-Every Reddit card names the poster as `u/<name>` in its footer. The first post
-shows what the listing carries: the full image for image posts, the cover for
-galleries, and a still frame for videos and link posts. Gallery posts are
-labelled **Gallery** in the footer and get a **Load gallery** button instead of
-**Load full post**. Press the button to fetch the post's detail and re-upload
-every gallery image or the video's MP4. The button is available to every
+Every Reddit card names the poster as `u/<name>` in its footer. Image posts
+show their full image. Gallery posts are completed up front: the bot reads the
+post's detail and posts every image as one attachment gallery, labelled
+**Gallery** in the footer, with extra messages once ten attachments are
+reached. Videos and link posts start with a still frame and keep a **Load full
+post** button that fetches the video's MP4. The button is available to every
 member; after a successful load the bot removes the original post, so the
 channel keeps only the complete one. Reddit's MP4 fallback is video-only, so
 loaded videos have no audio.

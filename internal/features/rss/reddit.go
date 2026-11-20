@@ -914,7 +914,7 @@ func redditPostIDFromGUID(guid string) string {
 // it; the component router does not require admin rights.
 func redditLoadButton(item FeedItem) []discordgo.MessageComponent {
 	id := redditPostIDFromGUID(item.GUID)
-	if id == "" {
+	if id == "" || item.MediaLoaded {
 		return nil
 	}
 	label := "Load full post"
@@ -988,14 +988,40 @@ type redditPostEnvelope []struct {
 	} `json:"data"`
 }
 
-// fetchRedditPost loads one post's full detail. It is only called from the
-// "Load full post" button, because it costs an extra request per post.
+// fetchRedditPost loads one post's full detail.
 func (f *Feature) fetchRedditPost(ctx context.Context, postID string) (FeedItem, error) {
 	body, err := f.redditRequest(ctx, redditPostURL(postID), "application/json", redditMaxPostBytes)
 	if err != nil {
 		return FeedItem{}, err
 	}
 	return parseRedditPost(body)
+}
+
+// loadRedditGallery replaces a listing's gallery cover with the post's full
+// image set. Galleries load up front because Discord's attachment viewer makes
+// the complete set useful without a click; a failed lookup keeps the cover and
+// its load button as a fallback.
+func (f *Feature) loadRedditGallery(ctx context.Context, item FeedItem) FeedItem {
+	if !item.Reddit || !item.Gallery || item.MediaLoaded {
+		return item
+	}
+	postID := redditPostIDFromGUID(item.GUID)
+	if postID == "" {
+		return item
+	}
+
+	full, err := f.fetchRedditPost(ctx, postID)
+	if err != nil {
+		f.log.Warn("loading reddit gallery", "post_id", postID, "err", err)
+		return item
+	}
+	if len(full.Media) == 0 {
+		return item
+	}
+
+	item.Media = full.Media
+	item.MediaLoaded = true
+	return item
 }
 
 // parseRedditPost turns reddit's post JSON into an item with every gallery
@@ -1023,12 +1049,13 @@ func parseRedditPost(body []byte) (FeedItem, error) {
 
 	isGallery := data.IsGallery || len(data.GalleryData.Items) > 0
 	item := FeedItem{
-		Title:   strings.TrimSpace(data.Title),
-		Link:    link,
-		Author:  strings.TrimSpace(data.Author),
-		Content: content,
-		Reddit:  true,
-		Gallery: isGallery,
+		Title:       strings.TrimSpace(data.Title),
+		Link:        link,
+		Author:      strings.TrimSpace(data.Author),
+		Content:     content,
+		Reddit:      true,
+		Gallery:     isGallery,
+		MediaLoaded: true,
 	}
 	if data.CreatedUTC > 0 {
 		item.Published = time.Unix(int64(data.CreatedUTC), 0).UTC()

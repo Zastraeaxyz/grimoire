@@ -33,9 +33,11 @@ type FeedItem struct {
 
 	// Reddit marks a post read from a reddit listing or post detail. Gallery
 	// marks a reddit gallery, which only shows its cover until the reader
-	// asks for the full post.
-	Reddit  bool
-	Gallery bool
+	// asks for the full post. MediaLoaded marks a reddit item whose complete
+	// media set is already present, so no load button is needed.
+	Reddit      bool
+	Gallery     bool
+	MediaLoaded bool
 }
 
 // parsedFeed is the result of decoding a document.
