@@ -293,6 +293,26 @@ func InteractionUserID(i *discordgo.InteractionCreate) string {
 	return ""
 }
 
+// subcommandName returns the subcommand path of a slash command, or an empty
+// string for a command without subcommands.
+func subcommandName(i *discordgo.InteractionCreate) string {
+	opts := i.ApplicationCommandData().Options
+	if len(opts) == 0 {
+		return ""
+	}
+	switch opts[0].Type {
+	case discordgo.ApplicationCommandOptionSubCommand:
+		return opts[0].Name
+	case discordgo.ApplicationCommandOptionSubCommandGroup:
+		if len(opts[0].Options) == 0 {
+			return opts[0].Name
+		}
+		return opts[0].Name + " " + opts[0].Options[0].Name
+	default:
+		return ""
+	}
+}
+
 func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionPing &&
 		i.Type != discordgo.InteractionApplicationCommand &&
@@ -333,6 +353,13 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 			b.Log.Warn("unhandled command", "command", name)
 			return
 		}
+		b.Log.Info("command run",
+			"command", name,
+			"subcommand", subcommandName(i),
+			"user_id", InteractionUserID(i),
+			"guild_id", i.GuildID,
+			"channel_id", i.ChannelID,
+		)
 		if err := handler(ctx, s, i); err != nil {
 			b.handleError(s, i, err)
 		}

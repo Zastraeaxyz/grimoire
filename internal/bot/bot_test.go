@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -139,5 +140,48 @@ func TestCommandDenial(t *testing.T) {
 				t.Fatalf("commandDenial = %q, want it to contain %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestHandleInteractionLogsCommandUsage(t *testing.T) {
+	var buf bytes.Buffer
+	b := &Bot{
+		Log: slog.New(slog.NewTextHandler(&buf, nil)),
+		commandHandlers: map[string]CommandHandler{
+			"rss": func(context.Context, *discordgo.Session, *discordgo.InteractionCreate) error {
+				return nil
+			},
+		},
+	}
+
+	i := &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type:      discordgo.InteractionApplicationCommand,
+		GuildID:   "guild-1",
+		ChannelID: "channel-1",
+		Member: &discordgo.Member{
+			Permissions: discordgo.PermissionManageGuild,
+			User:        &discordgo.User{ID: "user-1"},
+		},
+		Data: discordgo.ApplicationCommandInteractionData{
+			Name: "rss",
+			Options: []*discordgo.ApplicationCommandInteractionDataOption{
+				{Name: "add", Type: discordgo.ApplicationCommandOptionSubCommand},
+			},
+		},
+	}}
+
+	b.handleInteraction(nil, i)
+
+	logged := buf.String()
+	for _, want := range []string{
+		"command=rss",
+		"subcommand=add",
+		"user_id=user-1",
+		"guild_id=guild-1",
+		"channel_id=channel-1",
+	} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("log = %q, want it to contain %q", logged, want)
+		}
 	}
 }
