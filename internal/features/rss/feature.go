@@ -56,6 +56,10 @@ type Feature struct {
 	redditMu          sync.Mutex
 	redditLastRequest time.Time
 
+	redgifsMu          sync.Mutex
+	redgifsToken       string
+	redgifsTokenExpiry time.Time
+
 	startOnce sync.Once
 	pollMu    sync.Mutex
 }
@@ -403,12 +407,8 @@ func (f *Feature) test(ctx context.Context, s *discordgo.Session, i *discordgo.I
 	feed := &store.Feed{GuildID: f.guildID, URL: feedURL, ChannelID: i.ChannelID, Title: parsed.Title}
 	messages := f.buildMessages(ctx, feed, parsed.Items[0])
 
-	content := "Preview of the newest item:"
-	if messages[0].Content != "" {
-		content += "\n" + messages[0].Content
-	}
 	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: content,
+		Content: "Preview of the newest item:",
 		Embeds:  messages[0].Embeds,
 		Files:   messages[0].Files,
 	})

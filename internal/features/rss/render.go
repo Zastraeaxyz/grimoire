@@ -48,8 +48,7 @@ func (f *Feature) buildMessages(ctx context.Context, feed *store.Feed, item Feed
 	}
 
 	msg := &discordgo.MessageSend{
-		Embeds:  []*discordgo.MessageEmbed{embed},
-		Content: item.RedgifsURL,
+		Embeds: []*discordgo.MessageEmbed{embed},
 	}
 
 	if len(media) <= maxAttachments {

@@ -97,21 +97,6 @@ func TestBuildMessageLinksTheRedditAuthor(t *testing.T) {
 	}
 }
 
-func TestBuildMessageUnfurlsRedgifsLinks(t *testing.T) {
-	f := testFeature()
-	item := FeedItem{
-		Link:       "https://www.reddit.com/r/clips/comments/rg/clip/",
-		Author:     "frank",
-		Reddit:     true,
-		RedgifsURL: "https://www.redgifs.com/watch/abc123",
-	}
-
-	messages := f.buildMessages(context.Background(), &store.Feed{Title: "r/clips"}, item)
-	if got := messages[0].Content; got != "https://www.redgifs.com/watch/abc123" {
-		t.Errorf("content = %q", got)
-	}
-}
-
 func TestBuildMessagesEmbedsASingleImage(t *testing.T) {
 	server := imageServer(t)
 	defer server.Close()

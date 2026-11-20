@@ -143,8 +143,7 @@ func (f *Feature) postItem(ctx context.Context, s *discordgo.Session, feed *stor
 		// The upload failed, so any further media-only messages would fail too.
 		clearAttachmentImages(first.Embeds)
 		sent, fallbackErr := s.ChannelMessageSendComplex(feed.ChannelID, &discordgo.MessageSend{
-			Content: first.Content,
-			Embeds:  first.Embeds,
+			Embeds: first.Embeds,
 		})
 		if fallbackErr != nil {
 			return "", fmt.Errorf("%w (without media: %v)", err, fallbackErr)

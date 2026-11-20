@@ -556,7 +556,7 @@ func redditListingItem(n *xhtml.Node) (FeedItem, bool) {
 
 	redgifs := redgifsURL(dest)
 	content := bodyHTML
-	if dest != "" && !isRedditOwned(dest) && redgifs == "" {
+	if dest != "" && !isRedditOwned(dest) {
 		content = strings.TrimSpace(content + "\n<p>" + html.EscapeString(dest) + "</p>")
 	}
 
@@ -675,7 +675,7 @@ func redditSearchItem(n *xhtml.Node) (FeedItem, bool) {
 
 	redgifs := redgifsURL(dest)
 	content := ""
-	if dest != "" && !isRedditOwned(dest) && redgifs == "" {
+	if dest != "" && !isRedditOwned(dest) {
 		content = "<p>" + html.EscapeString(dest) + "</p>"
 	}
 
@@ -920,29 +920,6 @@ func redditProfileURL(author string) string {
 	return redditWebBase + "/user/" + url.PathEscape(name)
 }
 
-// redgifsURL normalizes a RedGifs watch link into the form Discord unfurls
-// into its own player. Other destinations return "".
-func redgifsURL(raw string) string {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return ""
-	}
-	switch strings.ToLower(u.Hostname()) {
-	case "redgifs.com", "www.redgifs.com", "v3.redgifs.com":
-	default:
-		return ""
-	}
-	parts := pathSegments(u.Path)
-	if len(parts) < 2 || !strings.EqualFold(parts[0], "watch") {
-		return ""
-	}
-	id := strings.TrimSpace(parts[1])
-	if id == "" {
-		return ""
-	}
-	return "https://www.redgifs.com/watch/" + url.PathEscape(id)
-}
-
 // redditPostData is the subset of a post's JSON representation the bot needs.
 type redditPostData struct {
 	ID                    string  `json:"id"`
@@ -1053,7 +1030,7 @@ func parseRedditPost(body []byte) (FeedItem, error) {
 	content := strings.TrimSpace(stdHTMLCommentStrip(data.SelfTextHTML))
 	dest := strings.TrimSpace(html.UnescapeString(data.URL))
 	redgifs := redgifsURL(dest)
-	if dest != "" && !isRedditOwned(dest) && redgifs == "" {
+	if dest != "" && !isRedditOwned(dest) {
 		content = strings.TrimSpace(content + "\n<p>" + html.EscapeString(dest) + "</p>")
 	}
 

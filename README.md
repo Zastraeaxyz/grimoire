@@ -26,8 +26,9 @@ Discord bot for the zxyz server, built on
 - **Reddit feeds**: reddit retired its `.rss` endpoints, so `/rss add` also
   accepts subreddit, user, and search URLs and reads their newest-first
   results directly. Galleries are fetched and posted in full right away;
-  videos and link posts show a still frame and link to the post. RedGifs links
-  also unfurl into Discord's own player. See [Reddit feeds](#reddit-feeds).
+  videos and link posts show a still frame and link to the post. RedGifs
+  videos are downloaded and attached so Discord can play them. See
+  [Reddit feeds](#reddit-feeds).
 - **bdsmlr invites**: `/bdsmlr invite email:<address>` sends a membership
   invitation through the account site. It needs `BDSMLR_SESSION` and the member
   command role, both covered in [bdsmlr invites](#bdsmlr-invites).
@@ -108,9 +109,10 @@ and names the feed in its footer. Image posts show their full image. Gallery
 posts are completed up front: the bot reads the post's detail and posts every
 image as one attachment gallery, labelled **Gallery** in the footer, with extra
 messages once ten attachments are reached. Videos and link posts start with a
-still frame that links to the original post. RedGifs links are also posted as
-message text, so Discord unfurls its own player under the card; that player is
-muted because Discord does not play audio for embedded RedGifs videos.
+still frame that links to the original post. RedGifs videos are resolved
+through RedGifs' API and attached as an MP4, because Discord only gives
+people's RedGifs links its click-to-play frame; the HD file is preferred, with
+an SD fallback when it exceeds the attachment cap.
 
 Commands that change server configuration need **Manage Server** or
 **Administrator**. Commands meant for members are gated by the role chosen with

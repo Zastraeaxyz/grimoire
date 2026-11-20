@@ -45,6 +45,10 @@ func (m downloadedMedia) isImage() bool {
 // downloadMedia fetches the images and videos for an item. Failures are
 // logged and skipped: one dead CDN link must not stop the post.
 func (f *Feature) downloadMedia(ctx context.Context, item FeedItem) []downloadedMedia {
+	if video := f.redgifsMediaFor(ctx, item); video != nil {
+		return video
+	}
+
 	media := item.Media
 	// bdsmlr's RSS advertises the original upload, which can be a converted or
 	// deleted file. Its API returns the current media, usually an MP4.
@@ -85,6 +89,10 @@ func (f *Feature) downloadMedia(ctx context.Context, item FeedItem) []downloaded
 }
 
 func (f *Feature) downloadOne(ctx context.Context, mediaURL string, limit int64) ([]byte, string, error) {
+	return f.downloadOneAs(ctx, mediaURL, limit, userAgent)
+}
+
+func (f *Feature) downloadOneAs(ctx context.Context, mediaURL string, limit int64, agent string) ([]byte, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -92,7 +100,7 @@ func (f *Feature) downloadOne(ctx context.Context, mediaURL string, limit int64)
 	if err != nil {
 		return nil, "", err
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", agent)
 	req.Header.Set("Accept", "image/*,video/*;q=0.9,*/*;q=0.5")
 
 	resp, err := f.httpClient.Do(req)

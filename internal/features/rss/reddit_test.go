@@ -171,8 +171,8 @@ func TestParseRedditListingRedgifs(t *testing.T) {
 	if item.RedgifsURL != "https://www.redgifs.com/watch/abc123" {
 		t.Errorf("RedgifsURL = %q", item.RedgifsURL)
 	}
-	if got := htmlToText(item.Content); got != "" {
-		t.Errorf("content = %q, want the destination kept out of the description", got)
+	if got := htmlToText(item.Content); got != "https://www.redgifs.com/watch/abc123" {
+		t.Errorf("content = %q, want the source link", got)
 	}
 	if len(item.Media) != 1 || !strings.HasPrefix(item.Media[0].URL, "https://external-preview.redd.it/rgthumb.jpeg") {
 		t.Errorf("media = %+v", item.Media)
@@ -769,6 +769,7 @@ func TestRedgifsURL(t *testing.T) {
 		"https://www.redgifs.com/watch/abc123":  "https://www.redgifs.com/watch/abc123",
 		"https://redgifs.com/watch/abc123?t=1":  "https://www.redgifs.com/watch/abc123",
 		"https://v3.redgifs.com/watch/AbC123":   "https://www.redgifs.com/watch/AbC123",
+		"https://www.redgifs.com/ifr/abc123":    "https://www.redgifs.com/watch/abc123",
 		"https://www.redgifs.com/users/someone": "",
 		"https://example.com/watch/abc123":      "",
 		"https://www.redgifs.com/":              "",
