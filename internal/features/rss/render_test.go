@@ -70,6 +70,48 @@ func TestBuildMessageUsesFeedAndPostMetadata(t *testing.T) {
 	}
 }
 
+func TestBuildMessageLinksTheRedditAuthor(t *testing.T) {
+	f := testFeature()
+	feed := &store.Feed{Title: "r/cats", URL: "https://www.reddit.com/r/cats"}
+	item := FeedItem{
+		GUID:   "t3_a",
+		Title:  "A post",
+		Link:   "https://www.reddit.com/r/cats/comments/a/x/",
+		Author: "alice",
+		Reddit: true,
+	}
+
+	messages := f.buildMessages(context.Background(), feed, item)
+	embed := messages[0].Embeds[0]
+	if embed.Author == nil || embed.Author.Name != "u/alice" {
+		t.Fatalf("author = %+v", embed.Author)
+	}
+	if embed.Author.URL != "https://www.reddit.com/user/alice" {
+		t.Errorf("author URL = %q", embed.Author.URL)
+	}
+	if embed.Footer == nil || embed.Footer.Text != "r/cats \u2022 reddit.com" {
+		t.Errorf("footer = %+v", embed.Footer)
+	}
+	if len(messages[0].Components) != 0 {
+		t.Errorf("components = %+v, want none", messages[0].Components)
+	}
+}
+
+func TestBuildMessageUnfurlsRedgifsLinks(t *testing.T) {
+	f := testFeature()
+	item := FeedItem{
+		Link:       "https://www.reddit.com/r/clips/comments/rg/clip/",
+		Author:     "frank",
+		Reddit:     true,
+		RedgifsURL: "https://www.redgifs.com/watch/abc123",
+	}
+
+	messages := f.buildMessages(context.Background(), &store.Feed{Title: "r/clips"}, item)
+	if got := messages[0].Content; got != "https://www.redgifs.com/watch/abc123" {
+		t.Errorf("content = %q", got)
+	}
+}
+
 func TestBuildMessagesEmbedsASingleImage(t *testing.T) {
 	server := imageServer(t)
 	defer server.Close()
@@ -222,45 +264,50 @@ func TestEmbedDescriptionKeepsTagsWhenBodyIsLong(t *testing.T) {
 func TestFooterText(t *testing.T) {
 	cases := []struct {
 		name string
+		feed *store.Feed
 		item FeedItem
 		want string
 	}{
 		{
 			name: "plain feed keeps the site",
+			feed: &store.Feed{Title: "Feed"},
 			item: FeedItem{Link: "https://imaglr.com/post/1"},
 			want: "imaglr.com",
 		},
 		{
-			name: "reddit post names the author",
+			name: "reddit post names its feed",
+			feed: &store.Feed{Title: "r/cats"},
 			item: FeedItem{
 				Link:   "https://www.reddit.com/r/cats/comments/a/x/",
 				Author: "alice",
 				Reddit: true,
 			},
-			want: "u/alice \u2022 reddit.com",
+			want: "r/cats \u2022 reddit.com",
 		},
 		{
 			name: "reddit gallery is called out",
+			feed: &store.Feed{Title: "r/cats"},
 			item: FeedItem{
 				Link:    "https://www.reddit.com/r/cats/comments/a/x/",
 				Author:  "alice",
 				Reddit:  true,
 				Gallery: true,
 			},
-			want: "Gallery \u2022 u/alice \u2022 reddit.com",
+			want: "Gallery \u2022 r/cats \u2022 reddit.com",
 		},
 		{
 			name: "reddit post without an author",
+			feed: &store.Feed{Title: "r/cats"},
 			item: FeedItem{
 				Link:   "https://www.reddit.com/r/cats/comments/a/x/",
 				Reddit: true,
 			},
-			want: "reddit.com",
+			want: "r/cats \u2022 reddit.com",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := footerText(tc.item); got != tc.want {
+			if got := footerText(tc.feed, tc.item); got != tc.want {
 				t.Fatalf("footerText = %q, want %q", got, tc.want)
 			}
 		})

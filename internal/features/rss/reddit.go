@@ -16,8 +16,6 @@ import (
 	"time"
 
 	xhtml "golang.org/x/net/html"
-
-	"github.com/bwmarrin/discordgo"
 )
 
 // Reddit retired the .rss listing endpoints. Its listing pages now require a
@@ -307,8 +305,8 @@ func redditListingURL(target redditTarget, includeNSFW bool) string {
 	return u.String()
 }
 
-// redditPostURL is the JSON endpoint for one post. It powers the "Load full
-// post" button and returns galleries, videos and full-size images.
+// redditPostURL is the JSON endpoint for one post. It powers the up-front
+// gallery loads and returns every gallery image and the video's MP4.
 func redditPostURL(postID string) string {
 	return strings.TrimRight(redditBase, "/") + "/comments/" + url.PathEscape(postID) + ".json?raw_json=1"
 }
@@ -556,8 +554,9 @@ func redditListingItem(n *xhtml.Node) (FeedItem, bool) {
 		bodyHTML = strings.TrimSpace(innerHTMLOf(body))
 	}
 
+	redgifs := redgifsURL(dest)
 	content := bodyHTML
-	if dest != "" && !isRedditOwned(dest) {
+	if dest != "" && !isRedditOwned(dest) && redgifs == "" {
 		content = strings.TrimSpace(content + "\n<p>" + html.EscapeString(dest) + "</p>")
 	}
 
@@ -575,19 +574,20 @@ func redditListingItem(n *xhtml.Node) (FeedItem, bool) {
 		}
 	case thumbnail != "":
 		// Videos and external link posts only expose a preview image in the
-		// listing. The button loads the real media on demand.
+		// listing.
 		declared = append(declared, Media{URL: thumbnail})
 	}
 
 	item := FeedItem{
-		GUID:      fullname,
-		Title:     title,
-		Link:      link,
-		Author:    author,
-		Content:   content,
-		Published: redditPublishedAt(n),
-		Reddit:    true,
-		Gallery:   gallery,
+		GUID:       fullname,
+		Title:      title,
+		Link:       link,
+		Author:     author,
+		Content:    content,
+		Published:  redditPublishedAt(n),
+		Reddit:     true,
+		Gallery:    gallery,
+		RedgifsURL: redgifs,
 	}
 	item.Media = collectMedia(item, declared)
 	return item, true
@@ -673,8 +673,9 @@ func redditSearchItem(n *xhtml.Node) (FeedItem, bool) {
 		author = strings.TrimSpace(firstAttrByName(n, "data-author"))
 	}
 
+	redgifs := redgifsURL(dest)
 	content := ""
-	if dest != "" && !isRedditOwned(dest) {
+	if dest != "" && !isRedditOwned(dest) && redgifs == "" {
 		content = "<p>" + html.EscapeString(dest) + "</p>"
 	}
 
@@ -695,14 +696,15 @@ func redditSearchItem(n *xhtml.Node) (FeedItem, bool) {
 	}
 
 	item := FeedItem{
-		GUID:      fullname,
-		Title:     title,
-		Link:      link,
-		Author:    author,
-		Content:   content,
-		Published: redditPublishedAt(n),
-		Reddit:    true,
-		Gallery:   gallery,
+		GUID:       fullname,
+		Title:      title,
+		Link:       link,
+		Author:     author,
+		Content:    content,
+		Published:  redditPublishedAt(n),
+		Reddit:     true,
+		Gallery:    gallery,
+		RedgifsURL: redgifs,
 	}
 	item.Media = collectMedia(item, declared)
 	return item, true
@@ -909,27 +911,36 @@ func redditPostIDFromGUID(guid string) string {
 	return strings.TrimPrefix(guid, "t3_")
 }
 
-// redditLoadButton renders the per-post component. The custom ID carries only
-// the post id, so buttons keep working across restarts. Any member may press
-// it; the component router does not require admin rights.
-func redditLoadButton(item FeedItem) []discordgo.MessageComponent {
-	id := redditPostIDFromGUID(item.GUID)
-	if id == "" || item.MediaLoaded {
-		return nil
+// redditProfileURL links a post's author to their profile.
+func redditProfileURL(author string) string {
+	name := strings.TrimSpace(author)
+	if name == "" {
+		return ""
 	}
-	label := "Load full post"
-	if item.Gallery {
-		label = "Load gallery"
+	return redditWebBase + "/user/" + url.PathEscape(name)
+}
+
+// redgifsURL normalizes a RedGifs watch link into the form Discord unfurls
+// into its own player. Other destinations return "".
+func redgifsURL(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
 	}
-	return []discordgo.MessageComponent{
-		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-			discordgo.Button{
-				Label:    label,
-				Style:    discordgo.SecondaryButton,
-				CustomID: "reddit:load:" + id,
-			},
-		}},
+	switch strings.ToLower(u.Hostname()) {
+	case "redgifs.com", "www.redgifs.com", "v3.redgifs.com":
+	default:
+		return ""
 	}
+	parts := pathSegments(u.Path)
+	if len(parts) < 2 || !strings.EqualFold(parts[0], "watch") {
+		return ""
+	}
+	id := strings.TrimSpace(parts[1])
+	if id == "" {
+		return ""
+	}
+	return "https://www.redgifs.com/watch/" + url.PathEscape(id)
 }
 
 // redditPostData is the subset of a post's JSON representation the bot needs.
@@ -999,10 +1010,9 @@ func (f *Feature) fetchRedditPost(ctx context.Context, postID string) (FeedItem,
 
 // loadRedditGallery replaces a listing's gallery cover with the post's full
 // image set. Galleries load up front because Discord's attachment viewer makes
-// the complete set useful without a click; a failed lookup keeps the cover and
-// its load button as a fallback.
+// the complete set useful without a click; a failed lookup keeps the cover.
 func (f *Feature) loadRedditGallery(ctx context.Context, item FeedItem) FeedItem {
-	if !item.Reddit || !item.Gallery || item.MediaLoaded {
+	if !item.Reddit || !item.Gallery {
 		return item
 	}
 	postID := redditPostIDFromGUID(item.GUID)
@@ -1020,7 +1030,6 @@ func (f *Feature) loadRedditGallery(ctx context.Context, item FeedItem) FeedItem
 	}
 
 	item.Media = full.Media
-	item.MediaLoaded = true
 	return item
 }
 
@@ -1043,19 +1052,20 @@ func parseRedditPost(body []byte) (FeedItem, error) {
 
 	content := strings.TrimSpace(stdHTMLCommentStrip(data.SelfTextHTML))
 	dest := strings.TrimSpace(html.UnescapeString(data.URL))
-	if dest != "" && !isRedditOwned(dest) {
+	redgifs := redgifsURL(dest)
+	if dest != "" && !isRedditOwned(dest) && redgifs == "" {
 		content = strings.TrimSpace(content + "\n<p>" + html.EscapeString(dest) + "</p>")
 	}
 
 	isGallery := data.IsGallery || len(data.GalleryData.Items) > 0
 	item := FeedItem{
-		Title:       strings.TrimSpace(data.Title),
-		Link:        link,
-		Author:      strings.TrimSpace(data.Author),
-		Content:     content,
-		Reddit:      true,
-		Gallery:     isGallery,
-		MediaLoaded: true,
+		Title:      strings.TrimSpace(data.Title),
+		Link:       link,
+		Author:     strings.TrimSpace(data.Author),
+		Content:    content,
+		Reddit:     true,
+		Gallery:    isGallery,
+		RedgifsURL: redgifs,
 	}
 	if data.CreatedUTC > 0 {
 		item.Published = time.Unix(int64(data.CreatedUTC), 0).UTC()

@@ -55,7 +55,6 @@ type Feature struct {
 	redditIncludeNSFW bool
 	redditMu          sync.Mutex
 	redditLastRequest time.Time
-	redditLoading     sync.Map
 
 	startOnce sync.Once
 	pollMu    sync.Mutex
@@ -97,7 +96,6 @@ func New(ctx context.Context, opts Options) *Feature {
 func (f *Feature) Register(b *bot.Bot) {
 	b.AddCommand(command(), f.handleCommand)
 	b.AddAutocomplete(CommandName, f.handleAutocomplete)
-	b.AddComponent("reddit", f.handleRedditComponent)
 	b.AddReadyHook(f.handleReady)
 }
 
@@ -405,8 +403,12 @@ func (f *Feature) test(ctx context.Context, s *discordgo.Session, i *discordgo.I
 	feed := &store.Feed{GuildID: f.guildID, URL: feedURL, ChannelID: i.ChannelID, Title: parsed.Title}
 	messages := f.buildMessages(ctx, feed, parsed.Items[0])
 
+	content := "Preview of the newest item:"
+	if messages[0].Content != "" {
+		content += "\n" + messages[0].Content
+	}
 	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: "Preview of the newest item:",
+		Content: content,
 		Embeds:  messages[0].Embeds,
 		Files:   messages[0].Files,
 	})

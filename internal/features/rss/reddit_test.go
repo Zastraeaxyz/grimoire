@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/bwmarrin/discordgo"
 )
 
 // redditListingFixture mirrors old.reddit's /new listing markup: each post is
@@ -151,6 +149,33 @@ func TestParseRedditListing(t *testing.T) {
 	video := feed.Items[4]
 	if len(video.Media) != 1 || !strings.HasPrefix(video.Media[0].URL, "https://preview.redd.it/vthumb.jpeg") {
 		t.Errorf("video media = %+v", video.Media)
+	}
+}
+
+func TestParseRedditListingRedgifs(t *testing.T) {
+	const fixture = `<!doctype html><html><body>
+<div class="thing id-t3_rg" data-fullname="t3_rg" data-author="frank" data-permalink="/r/clips/comments/rg/clip/" data-url="https://www.redgifs.com/watch/abc123" data-timestamp="1700000005">
+  <a class="thumbnail"><img src="//external-preview.redd.it/rgthumb.jpeg?width=140&amp;s=sig"></a>
+  <div class="entry"><p class="title"><a class="title">Clip</a></p></div>
+</div>
+</body></html>`
+
+	feed, err := parseRedditListing([]byte(fixture))
+	if err != nil {
+		t.Fatalf("parseRedditListing: %v", err)
+	}
+	if len(feed.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(feed.Items))
+	}
+	item := feed.Items[0]
+	if item.RedgifsURL != "https://www.redgifs.com/watch/abc123" {
+		t.Errorf("RedgifsURL = %q", item.RedgifsURL)
+	}
+	if got := htmlToText(item.Content); got != "" {
+		t.Errorf("content = %q, want the destination kept out of the description", got)
+	}
+	if len(item.Media) != 1 || !strings.HasPrefix(item.Media[0].URL, "https://external-preview.redd.it/rgthumb.jpeg") {
+		t.Errorf("media = %+v", item.Media)
 	}
 }
 
@@ -435,9 +460,6 @@ func TestParseRedditPostGallery(t *testing.T) {
 	if !item.Gallery || !item.Reddit {
 		t.Errorf("gallery flags = %v/%v", item.Gallery, item.Reddit)
 	}
-	if !item.MediaLoaded {
-		t.Error("gallery detail should mark its media as loaded")
-	}
 	if item.Media[0].URL != "https://preview.redd.it/m1.jpeg?width=1080&s=sig" {
 		t.Errorf("media[0] = %q", item.Media[0].URL)
 	}
@@ -471,17 +493,11 @@ func TestLoadRedditGalleryUsesFullPost(t *testing.T) {
 		Gallery: true,
 		Media:   []Media{{URL: "https://preview.redd.it/cover.jpeg"}},
 	})
-	if !item.MediaLoaded {
-		t.Fatal("media was not marked as loaded")
-	}
 	if len(item.Media) != 2 {
 		t.Fatalf("media = %d, want 2", len(item.Media))
 	}
 	if item.Media[0].URL != "https://preview.redd.it/m1.jpeg?width=1080&s=sig" {
 		t.Fatalf("media[0] = %q", item.Media[0].URL)
-	}
-	if redditLoadButton(item) != nil {
-		t.Fatal("loaded gallery still has a load button")
 	}
 }
 
@@ -493,14 +509,8 @@ func TestLoadRedditGalleryKeepsCoverOnFailure(t *testing.T) {
 		Gallery: true,
 		Media:   []Media{{URL: "https://preview.redd.it/cover.jpeg"}},
 	})
-	if item.MediaLoaded {
-		t.Fatal("failed lookup must not mark media as loaded")
-	}
 	if len(item.Media) != 1 {
 		t.Fatalf("media = %d, want the cover", len(item.Media))
-	}
-	if redditLoadButton(item) == nil {
-		t.Fatal("failed gallery should keep its fallback button")
 	}
 }
 
@@ -521,28 +531,6 @@ func TestParseRedditPostImage(t *testing.T) {
 	}
 	if len(item.Media) != 1 || item.Media[0].URL != "https://i.redd.it/pic1.jpeg" {
 		t.Fatalf("media = %+v", item.Media)
-	}
-}
-
-func TestRedditPostIDFromCustomID(t *testing.T) {
-	cases := map[string]string{
-		"reddit:load:abc123": "abc123",
-		"reddit:load:ABC123": "abc123",
-		"reddit:load:":       "",
-		"reddit:nope:abc":    "",
-		"reddit:load:ab-c":   "",
-	}
-	for input, want := range cases {
-		got, ok := redditPostIDFromCustomID(input)
-		if want == "" {
-			if ok {
-				t.Errorf("redditPostIDFromCustomID(%q) = %q, want invalid", input, got)
-			}
-			continue
-		}
-		if !ok || got != want {
-			t.Errorf("redditPostIDFromCustomID(%q) = %q, %v, want %q", input, got, ok, want)
-		}
 	}
 }
 
@@ -776,41 +764,19 @@ func TestFetchRedditSearch(t *testing.T) {
 	}
 }
 
-func TestRedditLoadButton(t *testing.T) {
-	components := redditLoadButton(FeedItem{GUID: "t3_abc123"})
-	if len(components) != 1 {
-		t.Fatalf("components = %d", len(components))
+func TestRedgifsURL(t *testing.T) {
+	cases := map[string]string{
+		"https://www.redgifs.com/watch/abc123":  "https://www.redgifs.com/watch/abc123",
+		"https://redgifs.com/watch/abc123?t=1":  "https://www.redgifs.com/watch/abc123",
+		"https://v3.redgifs.com/watch/AbC123":   "https://www.redgifs.com/watch/AbC123",
+		"https://www.redgifs.com/users/someone": "",
+		"https://example.com/watch/abc123":      "",
+		"https://www.redgifs.com/":              "",
+		"":                                      "",
 	}
-	row, ok := components[0].(discordgo.ActionsRow)
-	if !ok {
-		t.Fatalf("component type = %T", components[0])
-	}
-	button, ok := row.Components[0].(discordgo.Button)
-	if !ok {
-		t.Fatalf("button type = %T", row.Components[0])
-	}
-	if button.Label != "Load full post" || button.CustomID != "reddit:load:abc123" {
-		t.Errorf("button = %+v", button)
-	}
-
-	gallery := redditLoadButton(FeedItem{GUID: "t3_abc123", Gallery: true})
-	row, ok = gallery[0].(discordgo.ActionsRow)
-	if !ok {
-		t.Fatalf("gallery component type = %T", gallery[0])
-	}
-	button, ok = row.Components[0].(discordgo.Button)
-	if !ok {
-		t.Fatalf("gallery button type = %T", row.Components[0])
-	}
-	if button.Label != "Load gallery" {
-		t.Errorf("gallery button label = %q", button.Label)
-	}
-
-	if got := redditLoadButton(FeedItem{GUID: "t3_abc123", Gallery: true, MediaLoaded: true}); got != nil {
-		t.Error("loaded galleries must not get the button")
-	}
-
-	if redditLoadButton(FeedItem{GUID: "not-a-reddit-post"}) != nil {
-		t.Error("non-reddit items must not get the button")
+	for input, want := range cases {
+		if got := redgifsURL(input); got != want {
+			t.Errorf("redgifsURL(%q) = %q, want %q", input, got, want)
+		}
 	}
 }

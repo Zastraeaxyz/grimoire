@@ -26,9 +26,8 @@ Discord bot for the zxyz server, built on
 - **Reddit feeds**: reddit retired its `.rss` endpoints, so `/rss add` also
   accepts subreddit, user, and search URLs and reads their newest-first
   results directly. Galleries are fetched and posted in full right away;
-  videos and link posts keep a **Load full post** button that fetches the real
-  media on demand, then removes the placeholder post. See
-  [Reddit feeds](#reddit-feeds).
+  videos and link posts show a still frame and link to the post. RedGifs links
+  also unfurl into Discord's own player. See [Reddit feeds](#reddit-feeds).
 - **bdsmlr invites**: `/bdsmlr invite email:<address>` sends a membership
   invitation through the account site. It needs `BDSMLR_SESSION` and the member
   command role, both covered in [bdsmlr invites](#bdsmlr-invites).
@@ -96,24 +95,22 @@ The bot normalizes the URL to `old.reddit.com/search`, forces `sort=new` and
 dropped so the feed always starts at the newest result. A
 `/r/<name>/search?q=...` URL is folded into a `subreddit:<name>` term, so
 `https://www.reddit.com/r/golang/search?q=generics` becomes a search for
-`subreddit:golang generics`. Search results use the same card, poster footer,
-up-front galleries, and **Load full post** button for videos as other Reddit
-feeds.
+`subreddit:golang generics`. Search results use the same card, linked poster,
+up-front galleries, and still-frame videos as other Reddit feeds.
 
 `REDDIT_INCLUDE_NSFW` defaults to `true`, so NSFW communities and profiles can
 be followed. It sends Reddit's `over18` cookie and `include_over_18=on` unless
 the URL already sets `include_over_18` itself. Turn it off to keep the bot out
 of NSFW listings entirely.
 
-Every Reddit card names the poster as `u/<name>` in its footer. Image posts
-show their full image. Gallery posts are completed up front: the bot reads the
-post's detail and posts every image as one attachment gallery, labelled
-**Gallery** in the footer, with extra messages once ten attachments are
-reached. Videos and link posts start with a still frame and keep a **Load full
-post** button that fetches the video's MP4. The button is available to every
-member; after a successful load the bot removes the original post, so the
-channel keeps only the complete one. Reddit's MP4 fallback is video-only, so
-loaded videos have no audio.
+Every Reddit card links the poster's `u/<name>` author line to their profile
+and names the feed in its footer. Image posts show their full image. Gallery
+posts are completed up front: the bot reads the post's detail and posts every
+image as one attachment gallery, labelled **Gallery** in the footer, with extra
+messages once ten attachments are reached. Videos and link posts start with a
+still frame that links to the original post. RedGifs links are also posted as
+message text, so Discord unfurls its own player under the card; that player is
+muted because Discord does not play audio for embedded RedGifs videos.
 
 Commands that change server configuration need **Manage Server** or
 **Administrator**. Commands meant for members are gated by the role chosen with

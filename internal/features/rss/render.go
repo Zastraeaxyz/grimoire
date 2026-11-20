@@ -29,10 +29,10 @@ func (f *Feature) buildMessages(ctx context.Context, feed *store.Feed, item Feed
 
 	embed := &discordgo.MessageEmbed{
 		Color:       embedColor,
-		Author:      &discordgo.MessageEmbedAuthor{Name: feedDisplayName(feed), URL: item.Link},
+		Author:      embedAuthor(feed, item),
 		Title:       truncateText(displayTitle(item), embedTitleLimit),
 		Description: embedDescription(item),
-		Footer:      &discordgo.MessageEmbedFooter{Text: footerText(item)},
+		Footer:      &discordgo.MessageEmbedFooter{Text: footerText(feed, item)},
 	}
 	if item.Link != "" {
 		embed.URL = item.Link
@@ -48,8 +48,8 @@ func (f *Feature) buildMessages(ctx context.Context, feed *store.Feed, item Feed
 	}
 
 	msg := &discordgo.MessageSend{
-		Embeds:     []*discordgo.MessageEmbed{embed},
-		Components: redditLoadButton(item),
+		Embeds:  []*discordgo.MessageEmbed{embed},
+		Content: item.RedgifsURL,
 	}
 
 	if len(media) <= maxAttachments {
@@ -191,9 +191,21 @@ func siteName(rawURL string) string {
 	return strings.TrimPrefix(strings.ToLower(u.Host), "www.")
 }
 
-// footerText identifies a post's origin. Reddit posts also name the author,
-// and galleries are called out because the first post only carries the cover.
-func footerText(item FeedItem) string {
+// embedAuthor names the Reddit poster, linked to their profile. Other feeds
+// name the feed itself, linked to the post.
+func embedAuthor(feed *store.Feed, item FeedItem) *discordgo.MessageEmbedAuthor {
+	if item.Reddit && item.Author != "" {
+		return &discordgo.MessageEmbedAuthor{
+			Name: "u/" + item.Author,
+			URL:  redditProfileURL(item.Author),
+		}
+	}
+	return &discordgo.MessageEmbedAuthor{Name: feedDisplayName(feed), URL: item.Link}
+}
+
+// footerText identifies a post's origin. Reddit posts name their feed and call
+// out galleries, because the first post only carries the cover.
+func footerText(feed *store.Feed, item FeedItem) string {
 	site := siteName(item.Link)
 	if !item.Reddit {
 		return site
@@ -203,8 +215,8 @@ func footerText(item FeedItem) string {
 	if item.Gallery {
 		parts = append(parts, "Gallery")
 	}
-	if item.Author != "" {
-		parts = append(parts, "u/"+item.Author)
+	if name := feedDisplayName(feed); name != "" {
+		parts = append(parts, name)
 	}
 	if site != "" {
 		parts = append(parts, site)
