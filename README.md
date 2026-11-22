@@ -42,6 +42,11 @@ Discord bot for the zxyz server, built on
   its own persona, and its own commands. It answers mentions and replies and
   can check a member's ChastiSafe lock status as a tool. See
   [Roleplay bot](#roleplay-bot).
+- **Member ChastiSafe access**: `/login` links a member's own ChastiSafe
+  developer code to their Discord account. `/lockees` summarizes everyone they
+  hold keys for, `/locks` lists their templates by popularity, and
+  `/chastity status` shows their own locks. The roleplay bot keeps using its
+  single keyholder code and never reads these member codes.
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -60,6 +65,11 @@ Discord bot for the zxyz server, built on
 - `/stats post` - refresh the analytics dashboard now
 - `/stats preview` - show a report without posting it
 - `/stats status` - show the schedule, next run, and last result
+- `/login` - submit your own ChastiSafe developer code in a private modal
+- `/logout` - remove your saved ChastiSafe code
+- `/lockees` - list your ChastiSafe lockees and summarize their locks
+- `/locks` - list your lock templates sorted by lockee count
+- `/chastity status` - show your own ChastiSafe locks (main bot)
 - `/chastity status` - show your ChastiSafe lock status (roleplay bot)
 - `/prompt` - show the persona system prompt (roleplay bot admins)
 
@@ -226,6 +236,39 @@ before uploading, so each deploy reports the commit it was built from. The
 value is a plain string, so it can hold a release version instead once the
 project starts tagging releases.
 
+## Member ChastiSafe access
+
+The main bot can act on behalf of individual members. Each member submits their
+own developer code with `/login`, and every ChastiSafe command uses the code of
+the member who ran it. Codes are never shared between members.
+
+`/login` opens a private modal instead of a command option, so the code does not
+stay in Discord's local command history. The bot calls `/who` and requires the
+linked Discord ID on the ChastiSafe account to match the member who submitted
+the code. A code for a different account is rejected.
+
+The code is encrypted with AES-256-GCM before it is written to SQLite. Set
+`CHASTISAFE_STORE_KEY` to a 32-byte key encoded as base64 or hex to control the
+key yourself. When it is empty, the bot creates `<database dir>/chastisafe.key`
+with mode `0600` on first start and reuses it. Back up that file with the
+database, or every saved login becomes unreadable.
+
+| Command | Requires login | Result |
+| --- | --- | --- |
+| `/login` | no | Private modal that validates and stores the caller's code |
+| `/logout` | no | Deletes the caller's stored code |
+| `/lockees` | yes | Every active lockee with frozen, ready, timer, card, and check-in state |
+| `/locks` | yes | The caller's templates, sorted by lockee count |
+| `/chastity status` | yes | The caller's own active locks |
+
+`/locks` covers the logged-in account's templates. The ChastiSafe API has no
+global public lock directory, so `lockees` is the popularity value it sorts by.
+All replies are ephemeral.
+
+This feature is separate from the roleplay bot. Raven still uses one account
+from `CHASTISAFE_KEYHOLDER_CODE` and never reads member codes. See
+[docs/roleplay.md](docs/roleplay.md).
+
 ## Roleplay bot
 
 The repository can run a second Discord bot next to Grimoire. Both bots share
@@ -291,7 +334,8 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `OPENROUTER_BASE_URL` | no | `https://openrouter.ai/api/v1` | API root |
 | `ROLEPLAY_CHASTITY_ENABLED` | no | `true` | Read-only ChastiSafe status |
 | `CHASTISAFE_KEYHOLDER_CODE` | for chastity | | Persona account's developer code |
-| `CHASTISAFE_BASE_URL` | no | `https://chastisafe.com/api-v1` | ChastiSafe API root |
+| `CHASTISAFE_STORE_KEY` | no | generated key file | Encrypts member codes; 32 bytes as base64 or hex |
+| `CHASTISAFE_BASE_URL` | no | `https://chastisafe.com/api-v1` | ChastiSafe API root, shared by both bots |
 
 Copy `.env.example` to `.env` for local development. Real environment
 variables override `.env`, and database settings override the seed values

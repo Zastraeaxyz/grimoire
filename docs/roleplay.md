@@ -43,8 +43,14 @@ The persona acts as one ChastiSafe keyholder account. Put that account's
 developer code in `CHASTISAFE_KEYHOLDER_CODE`.
 
 The developer code is a password. It is sent in the `chastisafedev` header,
-never logged, and never written to the database. The bot also never stores a
-lockee's own developer code.
+never logged, and never written to the database. Raven uses this one account and
+never reads the per-member codes stored by the main bot.
+
+Grimoire itself has separate member-scoped ChastiSafe commands. A member runs
+`/login` on the main bot, and that member's encrypted code is used only for
+their own `/lockees`, `/locks`, and `/chastity status`. See
+[Member ChastiSafe access](../README.md#member-chastisafe-access). Raven is not
+part of that path and keeps using only `CHASTISAFE_KEYHOLDER_CODE`.
 
 Where to find the code: sign in to ChastiSafe, open your profile, and copy the
 developer code shown there.
