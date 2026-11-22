@@ -1,6 +1,6 @@
 // Package roleplay runs the optional persona bot that shares a process with
 // Grimoire. It answers mentions and replies from members, optionally limited to
-// one Discord role, and reads their ChastiSafe status.
+// one Discord role, and can check their ChastiSafe status with a tool.
 package roleplay
 
 import (
@@ -18,6 +18,7 @@ import (
 // ChatClient is the model surface the feature needs.
 type ChatClient interface {
 	Chat(ctx context.Context, system string, messages []ai.Message) (ai.Reply, error)
+	ChatWithTools(ctx context.Context, system string, messages []ai.Message, tools []ai.Tool) (ai.Reply, error)
 }
 
 // LockSource is the read-only ChastiSafe surface used for status. A nil source
@@ -53,7 +54,8 @@ type Feature struct {
 	guildID      string
 	botName      string
 	lockeeRoleID string
-	prompt       string
+	basePrompt   string
+	tools        []ai.Tool
 
 	contextMessages int
 	maxChunks       int
@@ -101,12 +103,19 @@ func New(opts Options) *Feature {
 
 	now := time.Now
 	prompt := strings.ReplaceAll(opts.SystemPrompt, "{{bot}}", opts.BotName)
+	basePrompt := prompt
+	var tools []ai.Tool
+	if opts.Locks != nil {
+		basePrompt += "\n\n" + chastityGuidance
+		tools = chastityTools()
+	}
 
 	f := &Feature{
 		guildID:         opts.GuildID,
 		botName:         opts.BotName,
 		lockeeRoleID:    opts.LockeeRoleID,
-		prompt:          prompt,
+		basePrompt:      basePrompt,
+		tools:           tools,
 		contextMessages: opts.ContextMessages,
 		maxChunks:       opts.MaxChunks,
 		timeout:         opts.Timeout,
@@ -134,6 +143,7 @@ func (f *Feature) Register(b *bot.Bot) {
 	} else {
 		b.AddPublicCommand(statusCommand(), f.handleStatusCommand)
 	}
+	b.AddCommand(promptCommand(), f.handlePromptCommand)
 	b.AddMessageHandler(f.handleMessage)
 }
 

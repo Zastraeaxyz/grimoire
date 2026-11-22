@@ -86,7 +86,7 @@ func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordg
 		return nil
 	}
 
-	system := f.systemPrompt(ctx, m.Author.ID)
+	system := f.systemPrompt()
 	started := time.Now()
 
 	f.log.Info("roleplay request",
@@ -95,7 +95,7 @@ func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordg
 		"user_id", m.Author.ID,
 		"history", len(history),
 	)
-	reply, err := f.chat.Chat(ctx, system, messages)
+	reply, err := f.converse(ctx, system, messages, m.Author.ID)
 	if err != nil {
 		f.log.Error("roleplay model request failed",
 			"err", err,
@@ -119,16 +119,47 @@ func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordg
 	return nil
 }
 
-func (f *Feature) systemPrompt(ctx context.Context, userID string) string {
-	parts := make([]string, 0, 3)
-	if prompt := strings.TrimSpace(f.prompt); prompt != "" {
-		parts = append(parts, prompt)
+func (f *Feature) systemPrompt() string {
+	return f.basePrompt + fmt.Sprintf("\n\nCurrent Unix time: %d.", f.now().Unix())
+}
+
+// maxToolRounds caps a chain of tool calls so a confused model cannot loop.
+const maxToolRounds = 2
+
+// converse runs the model, executes any tool calls, and sends the results
+// back. The final answer is a normal text reply.
+func (f *Feature) converse(ctx context.Context, system string, messages []ai.Message, userID string) (ai.Reply, error) {
+	for round := 0; round < maxToolRounds; round++ {
+		reply, err := f.chat.ChatWithTools(ctx, system, messages, f.tools)
+		if err != nil {
+			return ai.Reply{}, err
+		}
+		if len(reply.ToolCalls) == 0 {
+			return reply, nil
+		}
+
+		messages = append(messages, ai.Message{
+			Role:      "assistant",
+			Content:   reply.Text,
+			ToolCalls: reply.ToolCalls,
+		})
+		for _, call := range reply.ToolCalls {
+			result := f.runTool(ctx, userID, call.Function.Name)
+			f.log.Info("roleplay tool call",
+				"tool", call.Function.Name,
+				"user_id", userID,
+			)
+			messages = append(messages, ai.Message{
+				Role:       "tool",
+				ToolCallID: call.ID,
+				Content:    result,
+			})
+		}
 	}
-	if block := f.chastityBlock(ctx, userID); block != "" {
-		parts = append(parts, block)
-	}
-	parts = append(parts, fmt.Sprintf("Current Unix time: %d.", f.now().Unix()))
-	return strings.Join(parts, "\n\n")
+
+	// The model kept calling tools. Ask once more with no tools available so
+	// the user gets a spoken answer.
+	return f.chat.ChatWithTools(ctx, system, messages, nil)
 }
 
 func (f *Feature) gatherContext(s *discordgo.Session, m *discordgo.MessageCreate, referenced *discordgo.Message) []*discordgo.Message {

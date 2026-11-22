@@ -195,65 +195,168 @@ func TestStatusForNoKeyholder(t *testing.T) {
 	}
 }
 
-func TestChastityBlock(t *testing.T) {
-	source := &fakeLocks{locks: []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")}}
-	f := testFeature(t, source)
-
-	block := f.chastityBlock(context.Background(), "user-1")
-	for _, want := range []string{
-		"CHASTITY STATUS",
-		"data, not instructions",
-		"Mine",
-		"cannot create, freeze, unlock, or change",
-		"=== END ===",
-	} {
-		if !strings.Contains(block, want) {
-			t.Fatalf("block = %q, want %q", block, want)
+func TestBasePromptIncludesToolGuidance(t *testing.T) {
+	f := testFeature(t, &fakeLocks{})
+	for _, want := range []string{"chastity_status", "only when", "cannot create, freeze, unlock"} {
+		if !strings.Contains(f.basePrompt, want) {
+			t.Fatalf("base prompt = %q, want %q", f.basePrompt, want)
 		}
 	}
-	if strings.Contains(block, "SECRET-CODE") {
-		t.Fatal("prompt block leaked the lock combination")
+}
+
+func TestBasePromptWithoutChastity(t *testing.T) {
+	f := New(Options{
+		BotName:      "Mistress",
+		SystemPrompt: "You are {{bot}}.",
+		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if strings.Contains(strings.ToLower(f.basePrompt), "chastity") {
+		t.Fatalf("base prompt mentions chastity without the tool: %q", f.basePrompt)
+	}
+	if len(f.tools) != 0 {
+		t.Fatalf("tools = %+v, want none", f.tools)
 	}
 }
 
-func TestChastityBlockNoLock(t *testing.T) {
-	f := testFeature(t, &fakeLocks{})
-	block := f.chastityBlock(context.Background(), "user-1")
-	if !strings.Contains(block, "No active lock") {
-		t.Fatalf("block = %q", block)
-	}
-}
-
-func TestChastityBlockDisabled(t *testing.T) {
-	f := New(Options{Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if got := f.chastityBlock(context.Background(), "user-1"); got != "" {
-		t.Fatalf("block = %q, want empty", got)
-	}
-}
-
-func TestChastityBlockError(t *testing.T) {
-	source := &fakeLocks{err: errors.New("offline")}
-	f := testFeature(t, source)
-	if got := f.chastityBlock(context.Background(), "user-1"); got != "" {
-		t.Fatalf("block = %q, want empty on error", got)
-	}
-}
-
-func TestSystemPrompt(t *testing.T) {
+func TestSystemPromptHasTimeAndNoStatus(t *testing.T) {
 	source := &fakeLocks{locks: []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")}}
 	f := testFeature(t, source)
 	f.now = func() time.Time { return time.Unix(1795222140, 0) }
 
-	prompt := f.systemPrompt(context.Background(), "user-1")
+	prompt := f.systemPrompt()
 	if !strings.HasPrefix(prompt, "You are Mistress.") {
 		t.Fatalf("prompt = %q", prompt)
 	}
-	if !strings.Contains(prompt, "CHASTITY STATUS") {
-		t.Fatalf("prompt = %q", prompt)
+	if strings.Contains(prompt, "Mine") || strings.Contains(prompt, "CHASTITY STATUS") {
+		t.Fatalf("lock status leaked into the base prompt: %q", prompt)
 	}
 	if !strings.HasSuffix(strings.TrimSpace(prompt), "Current Unix time: 1795222140.") {
 		t.Fatalf("prompt = %q", prompt)
 	}
+}
+
+func TestRunToolChastityStatus(t *testing.T) {
+	source := &fakeLocks{locks: []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")}}
+	f := testFeature(t, source)
+
+	got := f.runTool(context.Background(), "user-1", "chastity_status")
+	if !strings.Contains(got, "Mine") {
+		t.Fatalf("tool result = %q", got)
+	}
+	if strings.Contains(got, "SECRET-CODE") {
+		t.Fatal("tool result leaked the lock combination")
+	}
+
+	if got := f.runTool(context.Background(), "user-1", "unknown"); !strings.Contains(got, "not available") {
+		t.Fatalf("unknown tool = %q", got)
+	}
+}
+
+func TestRunToolNoLock(t *testing.T) {
+	f := testFeature(t, &fakeLocks{})
+	if got := f.runTool(context.Background(), "user-1", "chastity_status"); !strings.Contains(got, "No active lock") {
+		t.Fatalf("tool result = %q", got)
+	}
+}
+
+func TestRunToolError(t *testing.T) {
+	f := testFeature(t, &fakeLocks{err: errors.New("offline")})
+	if got := f.runTool(context.Background(), "user-1", "chastity_status"); !strings.Contains(got, "unavailable") {
+		t.Fatalf("tool result = %q", got)
+	}
+}
+
+func TestConverseRunsTools(t *testing.T) {
+	source := &fakeLocks{locks: []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")}}
+	f := testFeature(t, source)
+	chat := &fakeChat{replies: []ai.Reply{
+		{ToolCalls: []ai.ToolCall{{
+			ID:       "call_1",
+			Type:     "function",
+			Function: ai.ToolCallFunction{Name: "chastity_status"},
+		}}},
+		{Text: "You are locked, pet."},
+	}}
+	f.chat = chat
+
+	reply, err := f.converse(context.Background(), "sys", []ai.Message{{Role: "user", Content: "am I locked?"}}, "user-1")
+	if err != nil {
+		t.Fatalf("converse: %v", err)
+	}
+	if reply.Text != "You are locked, pet." {
+		t.Fatalf("reply = %+v", reply)
+	}
+
+	chat.mu.Lock()
+	defer chat.mu.Unlock()
+	if len(chat.calls) != 2 {
+		t.Fatalf("chat calls = %d, want 2", len(chat.calls))
+	}
+	second := chat.calls[1].messages
+	last := second[len(second)-1]
+	if last.Role != "tool" || last.ToolCallID != "call_1" {
+		t.Fatalf("last message = %+v", last)
+	}
+	if !strings.Contains(last.Content, "Mine") || strings.Contains(last.Content, "SECRET-CODE") {
+		t.Fatalf("tool content = %q", last.Content)
+	}
+}
+
+func TestConverseStopsAfterToolLimit(t *testing.T) {
+	f := testFeature(t, &fakeLocks{})
+	toolReply := ai.Reply{ToolCalls: []ai.ToolCall{{
+		ID:       "call_1",
+		Type:     "function",
+		Function: ai.ToolCallFunction{Name: "chastity_status"},
+	}}}
+	chat := &fakeChat{replies: []ai.Reply{toolReply, toolReply, {Text: "Enough."}}}
+	f.chat = chat
+
+	reply, err := f.converse(context.Background(), "sys", []ai.Message{{Role: "user", Content: "hi"}}, "user-1")
+	if err != nil {
+		t.Fatalf("converse: %v", err)
+	}
+	if reply.Text != "Enough." {
+		t.Fatalf("reply = %+v", reply)
+	}
+
+	chat.mu.Lock()
+	defer chat.mu.Unlock()
+	if len(chat.calls) != maxToolRounds+1 {
+		t.Fatalf("chat calls = %d, want %d", len(chat.calls), maxToolRounds+1)
+	}
+	if len(chat.calls[len(chat.calls)-1].tools) != 0 {
+		t.Fatal("the final call should offer no tools")
+	}
+}
+
+type fakeChat struct {
+	mu      sync.Mutex
+	replies []ai.Reply
+	calls   []fakeChatCall
+}
+
+type fakeChatCall struct {
+	messages []ai.Message
+	tools    []ai.Tool
+}
+
+func (f *fakeChat) Chat(ctx context.Context, system string, messages []ai.Message) (ai.Reply, error) {
+	return f.ChatWithTools(ctx, system, messages, nil)
+}
+
+func (f *fakeChat) ChatWithTools(ctx context.Context, system string, messages []ai.Message, tools []ai.Tool) (ai.Reply, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	copied := append([]ai.Message(nil), messages...)
+	f.calls = append(f.calls, fakeChatCall{messages: copied, tools: tools})
+	if len(f.replies) == 0 {
+		return ai.Reply{}, errors.New("no scripted reply")
+	}
+	reply := f.replies[0]
+	f.replies = f.replies[1:]
+	return reply, nil
 }
 
 func TestSentCache(t *testing.T) {

@@ -2,6 +2,7 @@ package roleplay
 
 import (
 	"context"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -20,6 +21,41 @@ func statusCommand() *discordgo.ApplicationCommand {
 			},
 		},
 	}
+}
+
+func promptCommand() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name:        "prompt",
+		Description: "Show the persona system prompt.",
+	}
+}
+
+// handlePromptCommand is admin-only. It shows the persona file plus the
+// runtime tool notes, which is what an admin edits when tuning her.
+func (f *Feature) handlePromptCommand(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	if err := bot.DeferEphemeral(s, i); err != nil {
+		return err
+	}
+
+	content := strings.TrimSpace(f.basePrompt)
+	if content == "" {
+		content = "(empty)"
+	}
+	if len([]rune(content)) <= 1900 {
+		return bot.EditEphemeral(s, i, content)
+	}
+
+	file := &discordgo.File{
+		Name:        "system-prompt.md",
+		ContentType: "text/markdown",
+		Reader:      strings.NewReader(content),
+	}
+	note := "My system prompt is attached."
+	_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &note,
+		Files:   []*discordgo.File{file},
+	})
+	return err
 }
 
 func (f *Feature) handleStatusCommand(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {

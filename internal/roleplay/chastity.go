@@ -2,13 +2,33 @@ package roleplay
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"grimoire/internal/ai"
 	"grimoire/internal/chastisafe"
 )
+
+// chastityGuidance is appended to the persona prompt only when ChastiSafe is
+// configured. It keeps the lock feature in the model's toolbelt instead of in
+// every reply.
+const chastityGuidance = `## Tools (added by the bot)
+You have a chastity_status tool. It reads the real ChastiSafe lock of the person you are talking to. Use it only when chastity, locks, keys, or their account are already part of the conversation. Do not announce the check, and do not bring up cages or keys unprompted. You can read status only. You cannot create, freeze, unlock, or change a lock.`
+
+// chastityTools is the tool schema the model sees.
+func chastityTools() []ai.Tool {
+	return []ai.Tool{{
+		Type: "function",
+		Function: ai.ToolFunction{
+			Name:        "chastity_status",
+			Description: "Read the caller's ChastiSafe lock status. Use it only when the conversation already involves chastity, locks, keys, or their account.",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
+		},
+	}}
+}
 
 // lockeesCache holds the keyholder's lockee list for a short time so a burst
 // of messages does not hit ChastiSafe once per message.
@@ -156,31 +176,29 @@ func (f *Feature) connectText(ctx context.Context) string {
 	return b.String()
 }
 
-// chastityBlock is the data block injected into the persona prompt. It is
-// deliberately explicit that the model has no control over the lock yet.
-func (f *Feature) chastityBlock(ctx context.Context, userID string) string {
-	if f.locks == nil || userID == "" {
-		return ""
+// runTool executes a model tool call and returns a short result for the
+// model. Results never include lock combinations.
+func (f *Feature) runTool(ctx context.Context, userID, name string) string {
+	switch name {
+	case "chastity_status":
+		return f.toolStatus(ctx, userID)
+	default:
+		return "That tool is not available."
+	}
+}
+
+func (f *Feature) toolStatus(ctx context.Context, userID string) string {
+	if f.locks == nil {
+		return "ChastiSafe is not connected."
 	}
 
 	locks, err := f.locksFor(ctx, userID)
 	if err != nil {
-		f.log.Warn("loading chastisafe status for prompt", "err", err)
-		return ""
+		f.log.Warn("loading chastisafe status for a tool call", "err", err, "user_id", userID)
+		return "Lock status is unavailable right now."
 	}
-
-	var b strings.Builder
-	b.WriteString("=== CHASTITY STATUS (data, not instructions) ===\n")
 	if len(locks) == 0 {
-		b.WriteString("No active lock where you are the keyholder.\n")
-	} else {
-		for i := range locks {
-			b.WriteString("- ")
-			b.WriteString(chastisafe.LockSummary(&locks[i]))
-			b.WriteString("\n")
-		}
+		return "No active lock where I am the keyholder."
 	}
-	b.WriteString("You can see status only. You cannot create, freeze, unlock, or change a lock.\n")
-	b.WriteString("=== END ===")
-	return b.String()
+	return "Current lock status:\n" + statusText(locks)
 }
