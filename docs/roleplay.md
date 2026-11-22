@@ -22,9 +22,11 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
    required for the gateway.
 3. Invite the bot with the `bot` and `applications.commands` scopes.
 4. Set `DISCORD_ROLEPLAY_TOKEN` and `OPENROUTER_API_KEY` on the service.
-5. Optionally create a lockee role and set `ROLEPLAY_LOCKEE_ROLE_ID` to its ID.
+5. Optionally set `ROLEPLAY_GUILD_ID` to restrict the persona to one server.
+   Empty serves every guild it is invited to.
+6. Optionally create a lockee role and set `ROLEPLAY_LOCKEE_ROLE_ID` to its ID.
    Without it, any member can talk to the persona.
-6. Optionally edit `prompts/keyholder.md`. The file is copied into the image.
+7. Optionally edit `prompts/keyholder.md`. The file is copied into the image.
 
 The persona needs its own Discord identity. The username and avatar live in the
 Discord Developer Portal, not in this repository.
@@ -91,6 +93,7 @@ This version is intentionally read-only.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `DISCORD_ROLEPLAY_TOKEN` | | Turns the persona on |
+| `ROLEPLAY_GUILD_ID` | all guilds | Optional server lock |
 | `ROLEPLAY_BOT_NAME` | `Keyholder` | Fills `{{bot}}` in the prompt |
 | `ROLEPLAY_LOCKEE_ROLE_ID` | | Optional role gate; empty allows any member |
 | `ROLEPLAY_SYSTEM_PROMPT_FILE` | `./prompts/keyholder.md` | Persona prompt |

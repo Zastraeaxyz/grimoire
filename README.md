@@ -230,7 +230,8 @@ project starts tagging releases.
 The repository can run a second Discord bot next to Grimoire. Both bots share
 one process, one database, and one deploy. The persona has its own token,
 commands, system prompt, intents, and rate limits, and it stays offline when
-`DISCORD_ROLEPLAY_TOKEN` is empty.
+`DISCORD_ROLEPLAY_TOKEN` is empty. It can live in its own server; with no
+`ROLEPLAY_GUILD_ID` it serves every guild it is invited to.
 
 - It answers only mentions and replies to its own messages.
 - Any member can talk to it by default. Set `ROLEPLAY_LOCKEE_ROLE_ID` to limit
@@ -267,6 +268,7 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `STATS_TIMES` | no | `09:00,21:00` | Comma-separated report times, or `off` for manual only |
 | `STATS_CHANNEL_ID` | no | | Seeds the stats channel on first boot; `/settings stats` wins |
 | `DISCORD_ROLEPLAY_TOKEN` | no | | Second bot token; enables the roleplay persona |
+| `ROLEPLAY_GUILD_ID` | no | all guilds the bot is in | Optional server lock |
 | `ROLEPLAY_BOT_NAME` | no | `Keyholder` | Name the persona uses in its prompt |
 | `ROLEPLAY_LOCKEE_ROLE_ID` | no | | Optional role gate; empty lets any member talk to the persona |
 | `ROLEPLAY_SYSTEM_PROMPT_FILE` | no | `./prompts/keyholder.md` | Persona prompt file |
