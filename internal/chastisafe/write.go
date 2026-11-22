@@ -154,7 +154,7 @@ func (c *Client) SetPurpose(ctx context.Context, lockID ID, purpose Purpose) (*L
 func (c *Client) Freeze(ctx context.Context, lockID ID, frozen bool) (*LoadedLock, error) {
 	return c.update(ctx, "POST /update frozenbykh", map[string]any{
 		"id":         lockID,
-		"frozenbykh": yesNo(frozen),
+		"frozenbykh": frozen,
 	})
 }
 
@@ -162,7 +162,7 @@ func (c *Client) Freeze(ctx context.Context, lockID ID, frozen bool) (*LoadedLoc
 func (c *Client) Hide(ctx context.Context, lockID ID, hidden bool) (*LoadedLock, error) {
 	return c.update(ctx, "POST /update hidden", map[string]any{
 		"id":     lockID,
-		"hidden": yesNo(hidden),
+		"hidden": hidden,
 	})
 }
 
@@ -273,21 +273,38 @@ func (c *Client) Split(ctx context.Context, lockID ID, count int) ([]LoadedLock,
 	return out.Locks, nil
 }
 
-// Trust records a trust period for a lock. duration is stored as seconds.
-func (c *Client) Trust(ctx context.Context, lockID ID, duration time.Duration) error {
+// Trust extends a lockee's trust period. duration is stored as seconds. This
+// is a lockee action; ChastiSafe returns an internal error when a keyholder
+// calls it.
+func (c *Client) Trust(ctx context.Context, lockID ID, duration time.Duration) (*LoadedLock, error) {
 	const op = "POST /trust"
 	seconds, err := wholeSeconds(duration)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	body, err := c.post(ctx, "/trust", map[string]any{"lockId": lockID, "time": seconds})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if present, ok, _ := statusOf(body); present && !ok {
-		return newAPIError(op, 200, nil, body)
+	var out struct {
+		Status Status      `json:"status"`
+		Reason string      `json:"reason"`
+		Lock   *LoadedLock `json:"lock"`
 	}
-	return nil
+	if err := decodeJSON(body, &out); err != nil {
+		return nil, newAPIError(op, 200, nil, body)
+	}
+	if out.Reason != "" || (out.Status != StatusOK && out.Lock == nil) {
+		return nil, newAPIError(op, 200, nil, body)
+	}
+	if out.Lock != nil {
+		return out.Lock, nil
+	}
+	var lock LoadedLock
+	if err := json.Unmarshal(body, &lock); err == nil && lock.ID != "" {
+		return &lock, nil
+	}
+	return nil, nil
 }
 
 // CheckIn records a periodic check-in.

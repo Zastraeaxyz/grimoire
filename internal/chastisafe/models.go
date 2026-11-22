@@ -604,13 +604,13 @@ type KeyholderSettings struct {
 func (s KeyholderSettings) payload(lockID ID) map[string]any {
 	body := map[string]any{"id": lockID}
 	if s.FrozenByKeyholder != nil {
-		body["frozenbykh"] = yesNo(*s.FrozenByKeyholder)
+		body["frozenbykh"] = *s.FrozenByKeyholder
 	}
 	if s.Hidden != nil {
-		body["hidden"] = yesNo(*s.Hidden)
+		body["hidden"] = *s.Hidden
 	}
 	if s.Cumulative != nil {
-		body["cumulative"] = yesNo(*s.Cumulative)
+		body["cumulative"] = *s.Cumulative
 	}
 	if s.MaxPicks != nil {
 		body["maxPicks"] = strconv.Itoa(*s.MaxPicks)
@@ -670,11 +670,4 @@ func (s KeyholderSettings) payload(lockID ID) map[string]any {
 		body["lockPurpose"] = string(*s.LockPurpose)
 	}
 	return body
-}
-
-func yesNo(value bool) string {
-	if value {
-		return "yes"
-	}
-	return "no"
 }
