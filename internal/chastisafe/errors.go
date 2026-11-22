@@ -168,7 +168,11 @@ func statusOf(body []byte) (present bool, ok bool, reason string) {
 }
 
 func shortBody(body []byte) string {
-	text := strings.Join(strings.Fields(string(body)), " ")
+	text := string(body)
+	if index := strings.IndexAny(text, "\r\n"); index >= 0 {
+		text = text[:index]
+	}
+	text = strings.Join(strings.Fields(text), " ")
 	if text == "" {
 		return ""
 	}

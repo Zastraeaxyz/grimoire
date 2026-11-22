@@ -182,7 +182,11 @@ Checked against a live account:
 - `GET /pick/{id}` returns the card and the updated lock
 - `POST /update` with `addtime` adds timer seconds for a lockee when the
   template allows updates
-- template create, partial update, simulate and delete
+- `POST /update` with `cards` works for a lockee when the template allows
+  updates and the card is a yellow variant
+- a lockee is denied when trying to modify a green card
+- template create, partial update, card range edit, background, simulate and
+  delete
 - a self-lock returns `locknotfound` for `frozenbykh`, `hidden`,
   `remainingtime` and similar keyholder fields
 
@@ -190,7 +194,7 @@ Not yet checked against a real keyholder account:
 
 - `Unlock`
 - `Freeze`, `Hide`, `SetRemainingTime`, `SetPurpose`
-- `UpdateCards`, `AddCards`, `RemoveCards`
+- `UpdateCards`, `AddCards`, `RemoveCards` for a real keyholder account
 - `Split`
 - keyholder task, pillory and script actions
 
@@ -213,7 +217,8 @@ keyholder writes with `locknotfound`.
 - `GET /open/{id}` is the lockee path. `GET /unlock/{id}` is the keyholder
   path.
 - `deck` is a map of card name to remaining count. The app also accepts the
-  lowercase alias `yellow`.
+  lowercase alias `yellow`, and a loaded deck can report a specific yellow
+  variant as `YELLOW`. Use `Deck.Yellows()` when the variant does not matter.
 - `requiredgreens` values above 1000 mean "all greens". Values of 1000 or less
   mean a fixed number of greens.
 - `GET /profile/{user}` accepts a numeric user ID or a bare username. Strip the

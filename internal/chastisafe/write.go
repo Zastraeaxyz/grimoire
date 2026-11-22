@@ -231,7 +231,7 @@ func (c *Client) update(ctx context.Context, op string, body map[string]any) (*L
 	}
 	var lock LoadedLock
 	if err := json.Unmarshal(data, &lock); err != nil {
-		return nil, fmt.Errorf("%s: %w", op, ErrInvalidResponse)
+		return nil, newAPIError(op, 200, nil, data)
 	}
 	if lock.ID == "" {
 		return nil, nil
@@ -744,7 +744,7 @@ func decodeLockOrStatus(op string, data []byte) (*LoadedLock, error) {
 	}
 	var lock LoadedLock
 	if err := json.Unmarshal(data, &lock); err != nil {
-		return nil, fmt.Errorf("%s: %w", op, ErrInvalidResponse)
+		return nil, newAPIError(op, 200, nil, data)
 	}
 	if lock.ID == "" {
 		return nil, nil
