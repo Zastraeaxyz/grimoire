@@ -38,6 +38,10 @@ Discord bot for the zxyz server, built on
   visitors and pageviews for today, yesterday, and the last week, plus the
   most visited blogs from the last 7 days. See
   [Stats reports](#stats-reports).
+- **Roleplay keyholder**: an optional second Discord bot with its own token,
+  its own persona, and its own commands. It answers mentions and replies from
+  members with the lockee role and can read their ChastiSafe lock status.
+  See [Roleplay bot](#roleplay-bot).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -56,6 +60,7 @@ Discord bot for the zxyz server, built on
 - `/stats post` - refresh the analytics dashboard now
 - `/stats preview` - show a report without posting it
 - `/stats status` - show the schedule, next run, and last result
+- `/chastity status` - show your ChastiSafe lock status (roleplay bot)
 
 Feeds are polled once an hour. Each item is recorded in SQLite by GUID, so a
 restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
@@ -220,6 +225,20 @@ before uploading, so each deploy reports the commit it was built from. The
 value is a plain string, so it can hold a release version instead once the
 project starts tagging releases.
 
+## Roleplay bot
+
+The repository can run a second Discord bot next to Grimoire. Both bots share
+one process, one database, and one deploy. The persona has its own token,
+commands, system prompt, intents, and rate limits, and it stays offline when
+`DISCORD_ROLEPLAY_TOKEN` is empty.
+
+- It answers only mentions and replies to its own messages.
+- Only members with the lockee role can talk to it.
+- It reads ChastiSafe status for the member who is talking to it.
+- It has no memory and no ability to change a lock yet.
+
+Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
+
 ## Configuration
 
 | Variable | Required | Default | Notes |
@@ -245,6 +264,23 @@ project starts tagging releases.
 | `STATS_TIMEZONE` | no | `UTC` | Time zone for day boundaries and report times |
 | `STATS_TIMES` | no | `09:00,21:00` | Comma-separated report times, or `off` for manual only |
 | `STATS_CHANNEL_ID` | no | | Seeds the stats channel on first boot; `/settings stats` wins |
+| `DISCORD_ROLEPLAY_TOKEN` | no | | Second bot token; enables the roleplay persona |
+| `ROLEPLAY_BOT_NAME` | no | `Keyholder` | Name the persona uses in its prompt |
+| `ROLEPLAY_LOCKEE_ROLE_ID` | with roleplay | | Role whose members may speak to the persona |
+| `ROLEPLAY_SYSTEM_PROMPT_FILE` | no | `./prompts/keyholder.md` | Persona prompt file |
+| `ROLEPLAY_SYSTEM_PROMPT` | no | | Inline persona override |
+| `ROLEPLAY_CONTEXT_MESSAGES` | no | `15` | Channel messages sent as context |
+| `ROLEPLAY_MAX_CHUNKS` | no | `3` | Largest reply, in Discord messages |
+| `ROLEPLAY_TIMEOUT_SECONDS` | no | `60` | Model request timeout |
+| `ROLEPLAY_MAX_CONCURRENT` | no | `2` | Concurrent model calls |
+| `ROLEPLAY_RATE_LIMIT_CAPACITY` | no | `2` | Requests per member per window |
+| `ROLEPLAY_RATE_LIMIT_SECONDS` | no | `10` | Rate limit window |
+| `OPENROUTER_API_KEY` | with roleplay | | OpenRouter key |
+| `OPENROUTER_MODEL` | no | `deepseek/deepseek-v4.1-flash-1017` | Model slug |
+| `OPENROUTER_BASE_URL` | no | `https://openrouter.ai/api/v1` | API root |
+| `ROLEPLAY_CHASTITY_ENABLED` | no | `true` | Read-only ChastiSafe status |
+| `CHASTISAFE_KEYHOLDER_CODE` | for chastity | | Persona account's developer code |
+| `CHASTISAFE_BASE_URL` | no | `https://chastisafe.com/api-v1` | ChastiSafe API root |
 
 Copy `.env.example` to `.env` for local development. Real environment
 variables override `.env`, and database settings override the seed values
@@ -260,7 +296,9 @@ after the first `/welcome setup`.
 3. Drag the bot's role above the `Member` role in Server Settings > Roles.
 4. Run `/welcome setup role:@Member channel:#welcome rules:#rules`.
 
-No privileged gateway intents are required.
+No privileged gateway intents are required for Grimoire. The optional
+roleplay bot needs the **Message Content** intent enabled in its own Discord
+application, covered in [docs/roleplay.md](docs/roleplay.md).
 
 ## Local development
 
