@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParseBytes(t *testing.T) {
 	cases := map[string]int64{
@@ -118,7 +121,8 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 	for _, key := range []string{
 		"DISCORD_ROLEPLAY_TOKEN", "ROLEPLAY_LOCKEE_ROLE_ID", "OPENROUTER_API_KEY",
 		"ROLEPLAY_CHASTITY_ENABLED", "CHASTISAFE_KEYHOLDER_CODE", "CHASTISAFE_BASE_URL",
-		"ROLEPLAY_GUILD_ID",
+		"ROLEPLAY_GUILD_ID", "ROLEPLAY_PUNISH_PERCENT", "ROLEPLAY_PUNISH_MIN_MINUTES",
+		"ROLEPLAY_PUNISH_MAX_MINUTES",
 	} {
 		t.Setenv(key, "")
 	}
@@ -138,6 +142,11 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 	}
 	if cfg.OpenRouterModel != defaultOpenRouterModel {
 		t.Fatalf("OpenRouterModel = %q", cfg.OpenRouterModel)
+	}
+	if cfg.Roleplay.PunishPercent != 5 ||
+		cfg.Roleplay.PunishMin != 30*time.Minute ||
+		cfg.Roleplay.PunishMax != 4*time.Hour {
+		t.Fatalf("punishment defaults = %+v", cfg.Roleplay)
 	}
 }
 

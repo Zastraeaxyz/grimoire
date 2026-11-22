@@ -78,7 +78,12 @@ type RoleplayConfig struct {
 	RateLimitCount   int
 	RateLimitWindow  time.Duration
 
-	// Chastity enables the read-only ChastiSafe status display.
+	// Punishment scales added lock time for a broken rule.
+	PunishPercent int
+	PunishMin     time.Duration
+	PunishMax     time.Duration
+
+	// Chastity enables the ChastiSafe tools.
 	Chastity ChastityConfig
 }
 
@@ -192,6 +197,18 @@ func loadRoleplay() (RoleplayConfig, error) {
 	if err != nil {
 		return RoleplayConfig{}, err
 	}
+	punishPercent, err := envInt("ROLEPLAY_PUNISH_PERCENT", 5)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	punishMinMinutes, err := envInt("ROLEPLAY_PUNISH_MIN_MINUTES", 30)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	punishMaxMinutes, err := envInt("ROLEPLAY_PUNISH_MAX_MINUTES", 240)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
 
 	return RoleplayConfig{
 		Token:            strings.TrimSpace(os.Getenv("DISCORD_ROLEPLAY_TOKEN")),
@@ -206,6 +223,9 @@ func loadRoleplay() (RoleplayConfig, error) {
 		MaxConcurrent:    maxConcurrent,
 		RateLimitCount:   rateLimitCount,
 		RateLimitWindow:  rateLimitWindow,
+		PunishPercent:    punishPercent,
+		PunishMin:        time.Duration(punishMinMinutes) * time.Minute,
+		PunishMax:        time.Duration(punishMaxMinutes) * time.Minute,
 		Chastity: ChastityConfig{
 			Enabled:       chastityEnabled,
 			KeyholderCode: strings.TrimSpace(os.Getenv("CHASTISAFE_KEYHOLDER_CODE")),

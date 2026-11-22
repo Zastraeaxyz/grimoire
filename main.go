@@ -173,7 +173,7 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 	}
 
 	var (
-		locks     roleplay.LockSource
+		locks     roleplay.LockService
 		keyholder *chastisafe.Identity
 	)
 	switch {
@@ -232,6 +232,9 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 		MaxConcurrent:   rp.MaxConcurrent,
 		RateLimitCount:  rp.RateLimitCount,
 		RateLimitWindow: rp.RateLimitWindow,
+		PunishPercent:   rp.PunishPercent,
+		PunishMin:       rp.PunishMin,
+		PunishMax:       rp.PunishMax,
 		Chat:            chat,
 		Locks:           locks,
 		Keyholder:       keyholder,

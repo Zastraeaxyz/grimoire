@@ -16,7 +16,7 @@ import (
 	"grimoire/internal/chastisafe"
 )
 
-func testFeature(t *testing.T, source LockSource) *Feature {
+func testFeature(t *testing.T, source LockService) *Feature {
 	t.Helper()
 	f := New(Options{
 		GuildID:         "guild-1",
@@ -58,8 +58,21 @@ type fakeLocks struct {
 	templates     []chastisafe.Template
 	err           error
 	templateErr   error
+	writeErr      error
 	lockCalls     int
 	templateCalls int
+	addTimeCalls  []fakeAddTime
+	freezeCalls   []fakeFreeze
+}
+
+type fakeAddTime struct {
+	ID    chastisafe.ID
+	Delta time.Duration
+}
+
+type fakeFreeze struct {
+	ID     chastisafe.ID
+	Frozen bool
 }
 
 func (f *fakeLocks) Lockees(context.Context) ([]chastisafe.LoadedLock, error) {
@@ -80,6 +93,42 @@ func (f *fakeLocks) LoadableByKeyholder(context.Context, string) ([]chastisafe.T
 		return nil, f.templateErr
 	}
 	return f.templates, nil
+}
+
+func (f *fakeLocks) AddTime(_ context.Context, id chastisafe.ID, delta time.Duration) (*chastisafe.LoadedLock, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.addTimeCalls = append(f.addTimeCalls, fakeAddTime{ID: id, Delta: delta})
+	if f.writeErr != nil {
+		return nil, f.writeErr
+	}
+	for i := range f.locks {
+		if f.locks[i].ID != id {
+			continue
+		}
+		f.locks[i].TimerRemaining += int(delta / time.Second)
+		updated := f.locks[i]
+		return &updated, nil
+	}
+	return nil, nil
+}
+
+func (f *fakeLocks) Freeze(_ context.Context, id chastisafe.ID, frozen bool) (*chastisafe.LoadedLock, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.freezeCalls = append(f.freezeCalls, fakeFreeze{ID: id, Frozen: frozen})
+	if f.writeErr != nil {
+		return nil, f.writeErr
+	}
+	for i := range f.locks {
+		if f.locks[i].ID != id {
+			continue
+		}
+		f.locks[i].FrozenByKeyholder = frozen
+		updated := f.locks[i]
+		return &updated, nil
+	}
+	return nil, nil
 }
 
 func (f *fakeLocks) calls() (locks, templates int) {
@@ -197,7 +246,7 @@ func TestStatusForNoKeyholder(t *testing.T) {
 
 func TestBasePromptIncludesToolGuidance(t *testing.T) {
 	f := testFeature(t, &fakeLocks{})
-	for _, want := range []string{"chastity_status", "only when", "cannot create, freeze, unlock"} {
+	for _, want := range []string{"chastity_status", "chastity_punish", "chastity_freeze", "cannot unlock a lock"} {
 		if !strings.Contains(f.basePrompt, want) {
 			t.Fatalf("base prompt = %q, want %q", f.basePrompt, want)
 		}
@@ -239,7 +288,7 @@ func TestRunToolChastityStatus(t *testing.T) {
 	source := &fakeLocks{locks: []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")}}
 	f := testFeature(t, source)
 
-	got := f.runTool(context.Background(), "user-1", "chastity_status")
+	got := f.runTool(context.Background(), "user-1", "chastity_status", "")
 	if !strings.Contains(got, "Mine") {
 		t.Fatalf("tool result = %q", got)
 	}
@@ -247,22 +296,131 @@ func TestRunToolChastityStatus(t *testing.T) {
 		t.Fatal("tool result leaked the lock combination")
 	}
 
-	if got := f.runTool(context.Background(), "user-1", "unknown"); !strings.Contains(got, "not available") {
+	if got := f.runTool(context.Background(), "user-1", "unknown", ""); !strings.Contains(got, "not available") {
 		t.Fatalf("unknown tool = %q", got)
 	}
 }
 
 func TestRunToolNoLock(t *testing.T) {
 	f := testFeature(t, &fakeLocks{})
-	if got := f.runTool(context.Background(), "user-1", "chastity_status"); !strings.Contains(got, "No active lock") {
+	if got := f.runTool(context.Background(), "user-1", "chastity_status", ""); !strings.Contains(got, "No active lock") {
 		t.Fatalf("tool result = %q", got)
 	}
 }
 
 func TestRunToolError(t *testing.T) {
 	f := testFeature(t, &fakeLocks{err: errors.New("offline")})
-	if got := f.runTool(context.Background(), "user-1", "chastity_status"); !strings.Contains(got, "unavailable") {
+	if got := f.runTool(context.Background(), "user-1", "chastity_status", ""); !strings.Contains(got, "unavailable") {
 		t.Fatalf("tool result = %q", got)
+	}
+}
+
+func TestPunishmentDuration(t *testing.T) {
+	f := New(Options{
+		PunishPercent: 5,
+		PunishMin:     30 * time.Minute,
+		PunishMax:     4 * time.Hour,
+		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	cases := []struct {
+		remaining time.Duration
+		want      time.Duration
+	}{
+		{remaining: 0, want: 30 * time.Minute},
+		{remaining: 10 * time.Minute, want: 30 * time.Minute},
+		{remaining: 2 * time.Hour, want: 30 * time.Minute},
+		{remaining: 12 * time.Hour, want: 36 * time.Minute},
+		{remaining: 48 * time.Hour, want: 2*time.Hour + 24*time.Minute},
+		{remaining: 200 * time.Hour, want: 4 * time.Hour},
+	}
+	for _, tc := range cases {
+		if got := f.punishmentDuration(tc.remaining); got != tc.want {
+			t.Errorf("punishmentDuration(%s) = %s, want %s", tc.remaining, got, tc.want)
+		}
+	}
+}
+
+func TestToolPunish(t *testing.T) {
+	source := &fakeLocks{locks: []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")}}
+	f := testFeature(t, source)
+
+	got := f.runTool(context.Background(), "user-1", "chastity_punish", `{}`)
+	if !strings.Contains(got, "30 minutes added") {
+		t.Fatalf("punish result = %q", got)
+	}
+
+	source.mu.Lock()
+	calls := append([]fakeAddTime(nil), source.addTimeCalls...)
+	source.mu.Unlock()
+	if len(calls) != 1 || calls[0].Delta != 30*time.Minute {
+		t.Fatalf("AddTime calls = %+v", calls)
+	}
+}
+
+func TestToolPunishNoTimerLock(t *testing.T) {
+	lock := testLock("lock-1", "user-1", "Cards")
+	lock.Type = "card"
+	source := &fakeLocks{locks: []chastisafe.LoadedLock{lock}}
+	f := testFeature(t, source)
+
+	if got := f.runTool(context.Background(), "user-1", "chastity_punish", `{}`); !strings.Contains(got, "no timed lock") {
+		t.Fatalf("punish result = %q", got)
+	}
+	if calls, _ := source.calls(); calls != 1 {
+		t.Fatalf("Lockees calls = %d", calls)
+	}
+}
+
+func TestToolPunishError(t *testing.T) {
+	source := &fakeLocks{
+		locks:    []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")},
+		writeErr: errors.New("nope"),
+	}
+	f := testFeature(t, source)
+	if got := f.runTool(context.Background(), "user-1", "chastity_punish", `{}`); !strings.Contains(got, "did not accept") {
+		t.Fatalf("punish result = %q", got)
+	}
+}
+
+func TestToolFreeze(t *testing.T) {
+	source := &fakeLocks{locks: []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")}}
+	f := testFeature(t, source)
+
+	if got := f.runTool(context.Background(), "user-1", "chastity_freeze", `{"frozen":true}`); got != "Lock frozen." {
+		t.Fatalf("freeze result = %q", got)
+	}
+	if got := f.runTool(context.Background(), "user-1", "chastity_freeze", `{"frozen":false}`); got != "Lock thawed." {
+		t.Fatalf("thaw result = %q", got)
+	}
+
+	source.mu.Lock()
+	calls := append([]fakeFreeze(nil), source.freezeCalls...)
+	source.mu.Unlock()
+	if len(calls) != 2 || !calls[0].Frozen || calls[1].Frozen {
+		t.Fatalf("Freeze calls = %+v", calls)
+	}
+}
+
+func TestToolFreezeNeedsArgument(t *testing.T) {
+	f := testFeature(t, &fakeLocks{locks: []chastisafe.LoadedLock{testLock("lock-1", "user-1", "Mine")}})
+	for _, arguments := range []string{"", "{}", "not json"} {
+		if got := f.runTool(context.Background(), "user-1", "chastity_freeze", arguments); !strings.Contains(got, "whether to freeze") {
+			t.Fatalf("arguments %q gave %q", arguments, got)
+		}
+	}
+}
+
+func TestChastityTools(t *testing.T) {
+	tools := chastityTools()
+	names := make(map[string]bool, len(tools))
+	for _, tool := range tools {
+		names[tool.Function.Name] = true
+	}
+	for _, want := range []string{"chastity_status", "chastity_punish", "chastity_freeze"} {
+		if !names[want] {
+			t.Fatalf("missing tool %q in %v", want, names)
+		}
 	}
 }
 

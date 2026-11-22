@@ -144,7 +144,7 @@ func (f *Feature) converse(ctx context.Context, system string, messages []ai.Mes
 			ToolCalls: reply.ToolCalls,
 		})
 		for _, call := range reply.ToolCalls {
-			result := f.runTool(ctx, userID, call.Function.Name)
+			result := f.runTool(ctx, userID, call.Function.Name, call.Function.Arguments)
 			f.log.Info("roleplay tool call",
 				"tool", call.Function.Name,
 				"user_id", userID,

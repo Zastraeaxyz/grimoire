@@ -28,6 +28,13 @@ type LockSource interface {
 	LoadableByKeyholder(ctx context.Context, keyholderID string) ([]chastisafe.Template, error)
 }
 
+// LockService is the ChastiSafe surface used for status and keyholder actions.
+type LockService interface {
+	LockSource
+	AddTime(ctx context.Context, lockID chastisafe.ID, delta time.Duration) (*chastisafe.LoadedLock, error)
+	Freeze(ctx context.Context, lockID chastisafe.ID, frozen bool) (*chastisafe.LoadedLock, error)
+}
+
 // Options configures the roleplay feature.
 type Options struct {
 	GuildID      string
@@ -43,8 +50,13 @@ type Options struct {
 	RateLimitCount  int
 	RateLimitWindow time.Duration
 
+	// Punishment scales added lock time for a broken rule.
+	PunishPercent int
+	PunishMin     time.Duration
+	PunishMax     time.Duration
+
 	Chat      ChatClient
-	Locks     LockSource
+	Locks     LockService
 	Keyholder *chastisafe.Identity
 	Log       *slog.Logger
 }
@@ -62,9 +74,13 @@ type Feature struct {
 	timeout         time.Duration
 
 	chat      ChatClient
-	locks     LockSource
+	locks     LockService
 	keyholder *chastisafe.Identity
 	log       *slog.Logger
+
+	punishPercent int
+	punishMin     time.Duration
+	punishMax     time.Duration
 
 	sem       chan struct{}
 	limiter   *limiter
@@ -100,6 +116,18 @@ func New(opts Options) *Feature {
 	if opts.RateLimitWindow <= 0 {
 		opts.RateLimitWindow = 10 * time.Second
 	}
+	if opts.PunishPercent < 1 || opts.PunishPercent > 100 {
+		opts.PunishPercent = 5
+	}
+	if opts.PunishMin <= 0 {
+		opts.PunishMin = 30 * time.Minute
+	}
+	if opts.PunishMax <= 0 {
+		opts.PunishMax = 4 * time.Hour
+	}
+	if opts.PunishMax < opts.PunishMin {
+		opts.PunishMax = opts.PunishMin
+	}
 
 	now := time.Now
 	prompt := strings.ReplaceAll(opts.SystemPrompt, "{{bot}}", opts.BotName)
@@ -123,6 +151,9 @@ func New(opts Options) *Feature {
 		locks:           opts.Locks,
 		keyholder:       opts.Keyholder,
 		log:             opts.Log,
+		punishPercent:   opts.PunishPercent,
+		punishMin:       opts.PunishMin,
+		punishMax:       opts.PunishMax,
 		sem:             make(chan struct{}, opts.MaxConcurrent),
 		limiter:         newLimiter(opts.RateLimitCount, opts.RateLimitWindow, now),
 		lockCache:       newLockeesCache(30*time.Second, now),
