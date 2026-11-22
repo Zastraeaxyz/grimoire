@@ -32,6 +32,12 @@ Discord bot for the zxyz server, built on
 - **bdsmlr invites**: `/bdsmlr invite email:<address>` sends a membership
   invitation through the account site. It needs `BDSMLR_SESSION` and the member
   command role, both covered in [bdsmlr invites](#bdsmlr-invites).
+- **Stats reports**: `/settings stats channel:<channel>` points the bot at a
+  channel where it keeps a bbdsmlr analytics dashboard. The dashboard is
+  edited in place twice a day, or on demand with `/stats post`. It shows
+  visitors and pageviews for today, yesterday, and the last week, then the
+  most visited blogs and the busiest app pages, events, countries, referrers,
+  and devices from the last 24 hours. See [Stats reports](#stats-reports).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -42,8 +48,14 @@ Discord bot for the zxyz server, built on
   commands, or omit `role` to limit them to server admins
 - `/settings bot-meta channel:<channel>` - choose where the bot posts its build
   version whenever it starts, or omit `channel` to turn the posts off
-- `/settings status` - show the member command role and metadata channel
+- `/settings stats channel:<channel>` - choose where the analytics dashboard
+  lives, or omit `channel` to turn scheduled reports off
+- `/settings status` - show the member command role, metadata channel, and
+  stats channel
 - `/bdsmlr invite email:<address>` - confirm and send a bdsmlr invitation
+- `/stats post` - refresh the analytics dashboard now
+- `/stats preview` - show a report without posting it
+- `/stats status` - show the schedule, next run, and last result
 
 Feeds are polled once an hour. Each item is recorded in SQLite by GUID, so a
 restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
@@ -158,6 +170,40 @@ invited email address is never posted publicly.
 never logged, and it needs to be refreshed when the account-site session
 expires.
 
+## Stats reports
+
+`/settings stats channel:#stats` makes the bot keep a dashboard of bbdsmlr's
+anonymous Umami analytics in that channel. The message is edited in place, so
+the channel holds one current report instead of a feed of stale ones. A deleted
+dashboard is reposted on the next run.
+
+The first embed covers today so far, yesterday with its change against the day
+before, the last seven days, and yesterday's average visit and bounce rate. The
+second covers the last 24 hours: the most visited blogs as links to
+`bdsmlr.zastraea.xyz/<blog>`, the busiest app pages, Umami events such as
+searches and likes, countries, referrers, and devices.
+
+Blog names come from the page paths bbdsmlr records. Its tracker only sends
+canonical paths, so `/rectrix` and `/rectrix/archive` both count as the blog
+`rectrix`, while app routes like `/home`, `/login`, and `/search` are ignored.
+The reserved route list mirrors bbdsmlr's `src/lib/analytics.ts`.
+
+Reports run at 09:00 and 21:00 UTC by default. `/stats post` refreshes the
+dashboard immediately, `/stats preview` shows the same report only to the
+caller, and `/stats status` shows the configured channel, next run, and last
+error. All three need **Manage Server**.
+
+Umami access needs an API key from the instance:
+
+1. Sign in to your Umami instance.
+2. Open your profile menu, then Settings, then API keys.
+3. Create a key and set `UMAMI_URL`, `UMAMI_WEBSITE_ID`, and `UMAMI_API_KEY`.
+
+API keys need Umami 3.4.0 or newer. The bot reads only summary and ranking
+endpoints, never raw sessions or individual visitors. If any of the three
+variables is missing, the feature stays off and `/stats` explains why. Umami
+errors leave the existing dashboard untouched and appear in `/stats status`.
+
 ## Bot metadata
 
 `/settings bot-meta channel:<channel>` points the bot at a channel where it
@@ -191,6 +237,13 @@ project starts tagging releases.
 | `REDDIT_USER_AGENT` | no | Firefox desktop | User-Agent for Reddit requests; Reddit rejects generic agents |
 | `REDDIT_INCLUDE_NSFW` | no | `true` | Allow NSFW subreddits and profiles (`over18`, `include_over_18=on`) |
 | `BDSMLR_SESSION` | for bdsmlr invites | | Full `Cookie` header from a signed-in `account.bdsmlr.com` session |
+| `UMAMI_URL` | for stats reports | | Umami base URL, for example `https://analytics.example.com` |
+| `UMAMI_WEBSITE_ID` | for stats reports | | Website ID shown in Umami's website settings |
+| `UMAMI_API_KEY` | for stats reports | | API key from Umami's Settings > API keys |
+| `STATS_SITE_URL` | no | `https://bdsmlr.zastraea.xyz` | Base URL for blog links in the report |
+| `STATS_TIMEZONE` | no | `UTC` | Time zone for day boundaries and report times |
+| `STATS_TIMES` | no | `09:00,21:00` | Comma-separated report times, or `off` for manual only |
+| `STATS_CHANNEL_ID` | no | | Seeds the stats channel on first boot; `/settings stats` wins |
 
 Copy `.env.example` to `.env` for local development. Real environment
 variables override `.env`, and database settings override the seed values
