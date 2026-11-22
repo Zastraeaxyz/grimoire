@@ -8,8 +8,9 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
 
 ## What it does today
 
-- Answers when a lockee mentions it or replies to one of its messages.
-- Only talks to members with the configured lockee role.
+- Answers when a member mentions it or replies to one of its messages.
+- Any member can talk to it by default. Setting the lockee role limits it to
+  members with that role.
 - Reads the caller's current ChastiSafe lock status and can speak about it.
 - Exposes `/chastity status` so a member can check their own lock privately.
 - Uses no memory and cannot change a lock yet.
@@ -20,16 +21,16 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
 2. In the Bot settings, enable the **Message Content** intent. Nothing else is
    required for the gateway.
 3. Invite the bot with the `bot` and `applications.commands` scopes.
-4. Create the lockee role, then set `ROLEPLAY_LOCKEE_ROLE_ID` to its ID.
-5. Set `DISCORD_ROLEPLAY_TOKEN`, `OPENROUTER_API_KEY`, and
-   `ROLEPLAY_LOCKEE_ROLE_ID` on the service.
+4. Set `DISCORD_ROLEPLAY_TOKEN` and `OPENROUTER_API_KEY` on the service.
+5. Optionally create a lockee role and set `ROLEPLAY_LOCKEE_ROLE_ID` to its ID.
+   Without it, any member can talk to the persona.
 6. Optionally edit `prompts/keyholder.md`. The file is copied into the image.
 
 The persona needs its own Discord identity. The username and avatar live in the
 Discord Developer Portal, not in this repository.
 
-If the token is set but the lockee role, the OpenRouter key, or the prompt is
-missing, the persona logs an error and Grimoire keeps running.
+If the token is set but the OpenRouter key or the prompt is missing, the persona
+logs an error and Grimoire keeps running.
 
 ## ChastiSafe
 
@@ -64,7 +65,7 @@ no separate allowlist to maintain.
 
 | Command | Who | Result |
 | --- | --- | --- |
-| `/chastity status` | Lockees and admins | Ephemeral list of the caller's active locks, or connection instructions |
+| `/chastity status` | Any member | Ephemeral list of the caller's active locks, or connection instructions |
 | Mentions and replies | Lockees | An in-character reply with the caller's lock status in the prompt |
 
 Admins can run `/chastity status` because slash command permissions always allow
@@ -91,7 +92,7 @@ This version is intentionally read-only.
 | --- | --- | --- |
 | `DISCORD_ROLEPLAY_TOKEN` | | Turns the persona on |
 | `ROLEPLAY_BOT_NAME` | `Keyholder` | Fills `{{bot}}` in the prompt |
-| `ROLEPLAY_LOCKEE_ROLE_ID` | | Required when the persona is on |
+| `ROLEPLAY_LOCKEE_ROLE_ID` | | Optional role gate; empty allows any member |
 | `ROLEPLAY_SYSTEM_PROMPT_FILE` | `./prompts/keyholder.md` | Persona prompt |
 | `ROLEPLAY_SYSTEM_PROMPT` | | Inline override; wins over the file |
 | `ROLEPLAY_CONTEXT_MESSAGES` | `15` | Channel history per request |
@@ -112,7 +113,6 @@ disables the status block for that process.
 
 ```sh
 DISCORD_ROLEPLAY_TOKEN=... \
-ROLEPLAY_LOCKEE_ROLE_ID=... \
 OPENROUTER_API_KEY=... \
 CHASTISAFE_KEYHOLDER_CODE=... \
 go run .

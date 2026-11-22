@@ -396,3 +396,15 @@ func TestHasLockeeRole(t *testing.T) {
 		t.Fatal("unexpected role match")
 	}
 }
+
+func TestHasLockeeRoleWithoutRoleConfigured(t *testing.T) {
+	f := testFeature(t, nil)
+	f.lockeeRoleID = ""
+	m := &discordgo.MessageCreate{Message: &discordgo.Message{
+		Member: &discordgo.Member{},
+		Author: &discordgo.User{ID: "user-1"},
+	}}
+	if !f.hasLockeeRole(nil, m) {
+		t.Fatal("an empty role should allow any member")
+	}
+}

@@ -1,6 +1,6 @@
 // Package roleplay runs the optional persona bot that shares a process with
-// Grimoire. It answers mentions and replies from members with the lockee role
-// and reads their ChastiSafe status.
+// Grimoire. It answers mentions and replies from members, optionally limited to
+// one Discord role, and reads their ChastiSafe status.
 package roleplay
 
 import (
@@ -129,7 +129,11 @@ func (f *Feature) Register(b *bot.Bot) {
 	if b == nil {
 		return
 	}
-	b.AddUserCommand(statusCommand(), f.handleStatusCommand)
+	if f.lockeeRoleID != "" {
+		b.AddUserCommand(statusCommand(), f.handleStatusCommand)
+	} else {
+		b.AddPublicCommand(statusCommand(), f.handleStatusCommand)
+	}
 	b.AddMessageHandler(f.handleMessage)
 }
 

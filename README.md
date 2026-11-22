@@ -39,9 +39,9 @@ Discord bot for the zxyz server, built on
   most visited blogs from the last 7 days. See
   [Stats reports](#stats-reports).
 - **Roleplay keyholder**: an optional second Discord bot with its own token,
-  its own persona, and its own commands. It answers mentions and replies from
-  members with the lockee role and can read their ChastiSafe lock status.
-  See [Roleplay bot](#roleplay-bot).
+  its own persona, and its own commands. It answers mentions and replies and
+  can read a member's ChastiSafe lock status. See
+  [Roleplay bot](#roleplay-bot).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -233,7 +233,8 @@ commands, system prompt, intents, and rate limits, and it stays offline when
 `DISCORD_ROLEPLAY_TOKEN` is empty.
 
 - It answers only mentions and replies to its own messages.
-- Only members with the lockee role can talk to it.
+- Any member can talk to it by default. Set `ROLEPLAY_LOCKEE_ROLE_ID` to limit
+  it to one role.
 - It reads ChastiSafe status for the member who is talking to it.
 - It has no memory and no ability to change a lock yet.
 - An incomplete roleplay configuration logs an error and leaves Grimoire running.
@@ -267,7 +268,7 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `STATS_CHANNEL_ID` | no | | Seeds the stats channel on first boot; `/settings stats` wins |
 | `DISCORD_ROLEPLAY_TOKEN` | no | | Second bot token; enables the roleplay persona |
 | `ROLEPLAY_BOT_NAME` | no | `Keyholder` | Name the persona uses in its prompt |
-| `ROLEPLAY_LOCKEE_ROLE_ID` | with roleplay | | Role whose members may speak to the persona |
+| `ROLEPLAY_LOCKEE_ROLE_ID` | no | | Optional role gate; empty lets any member talk to the persona |
 | `ROLEPLAY_SYSTEM_PROMPT_FILE` | no | `./prompts/keyholder.md` | Persona prompt file |
 | `ROLEPLAY_SYSTEM_PROMPT` | no | | Inline persona override |
 | `ROLEPLAY_CONTEXT_MESSAGES` | no | `15` | Channel messages sent as context |

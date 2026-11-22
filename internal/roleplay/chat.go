@@ -265,7 +265,10 @@ func cleanContent(m *discordgo.MessageCreate, botID string) string {
 }
 
 func (f *Feature) hasLockeeRole(s *discordgo.Session, m *discordgo.MessageCreate) bool {
-	if f.lockeeRoleID == "" || m == nil || m.Author == nil {
+	if f.lockeeRoleID == "" {
+		return true
+	}
+	if m == nil || m.Author == nil {
 		return false
 	}
 	if m.Member != nil {
