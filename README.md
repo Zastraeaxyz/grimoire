@@ -40,7 +40,7 @@ Discord bot for the zxyz server, built on
   [Stats reports](#stats-reports).
 - **Roleplay keyholder**: an optional second Discord bot with its own token,
   its own persona, and its own commands. It answers mentions and replies and
-  can read a member's ChastiSafe lock status. See
+  can check a member's ChastiSafe lock status as a tool. See
   [Roleplay bot](#roleplay-bot).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
@@ -61,6 +61,7 @@ Discord bot for the zxyz server, built on
 - `/stats preview` - show a report without posting it
 - `/stats status` - show the schedule, next run, and last result
 - `/chastity status` - show your ChastiSafe lock status (roleplay bot)
+- `/prompt` - show the persona system prompt (roleplay bot admins)
 
 Feeds are polled once an hour. Each item is recorded in SQLite by GUID, so a
 restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
@@ -236,7 +237,9 @@ commands, system prompt, intents, and rate limits, and it stays offline when
 - It answers only mentions and replies to its own messages.
 - Any member can talk to it by default. Set `ROLEPLAY_LOCKEE_ROLE_ID` to limit
   it to one role.
-- It reads ChastiSafe status for the member who is talking to it.
+- It can check ChastiSafe lock status as a tool when the conversation calls
+  for it. Status is not injected into every reply.
+- Exposes `/prompt` to admins so the persona can be reviewed and tuned.
 - It has no memory and no ability to change a lock yet.
 - An incomplete roleplay configuration logs an error and leaves Grimoire running.
 

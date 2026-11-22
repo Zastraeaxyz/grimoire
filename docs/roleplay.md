@@ -11,8 +11,10 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
 - Answers when a member mentions it or replies to one of its messages.
 - Any member can talk to it by default. Setting the lockee role limits it to
   members with that role.
-- Reads the caller's current ChastiSafe lock status and can speak about it.
+- Can check the caller's ChastiSafe lock status with a tool, only when locks or
+  chastity are already part of the conversation.
 - Exposes `/chastity status` so a member can check their own lock privately.
+- Exposes `/prompt` to admins so the persona can be reviewed and tuned.
 - Uses no memory and cannot change a lock yet.
 
 ## Setup
@@ -46,6 +48,10 @@ lockee's own developer code.
 Where to find the code: sign in to ChastiSafe, open your profile, and copy the
 developer code shown there.
 
+The model sees the lock status as a tool. It is not injected into every prompt,
+so she only looks when the conversation makes it relevant. Most conversations
+never touch ChastiSafe.
+
 ### Connecting a lockee
 
 ChastiSafe does not let a keyholder attach a lockee through its API. The lockee
@@ -68,7 +74,8 @@ no separate allowlist to maintain.
 | Command | Who | Result |
 | --- | --- | --- |
 | `/chastity status` | Any member | Ephemeral list of the caller's active locks, or connection instructions |
-| Mentions and replies | Lockees | An in-character reply with the caller's lock status in the prompt |
+| `/prompt` | Admins | Ephemeral copy of the persona prompt and runtime tool notes |
+| Mentions and replies | Any member allowed to talk to her | An in-character reply; lock status is available as a tool, not injected |
 
 Admins can run `/chastity status` because slash command permissions always allow
 server admins.
@@ -83,6 +90,8 @@ This version is intentionally read-only.
   to have controls it lacks.
 - Lock combinations and unlock codes are never placed in the prompt, the reply,
   or the logs.
+- Status is a tool, not a prompt injection. The model sees it in its toolbelt
+  and calls it only when chastity or locks are already in the conversation.
 - Status responses are ephemeral. Channel mentions do not quote private lock
   details beyond what the persona chooses to say.
 - Message content is never logged. Only channel, member, timing, and token
@@ -108,9 +117,9 @@ This version is intentionally read-only.
 | `CHASTISAFE_KEYHOLDER_CODE` | | ChastiSafe keyholder developer code |
 | `CHASTISAFE_BASE_URL` | `https://chastisafe.com/api-v1` | API root override |
 
-A missing keyholder code disables only the ChastiSafe status block. Grimoire and
+A missing keyholder code disables only the ChastiSafe status tool. Grimoire and
 the rest of the persona keep running. A bad code logs a warning at startup and
-disables the status block for that process.
+disables the tool for that process.
 
 ## Running locally
 
