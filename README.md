@@ -35,9 +35,9 @@ Discord bot for the zxyz server, built on
 - **Stats reports**: `/settings stats channel:<channel>` points the bot at a
   channel where it keeps a bbdsmlr analytics dashboard. The dashboard is
   edited in place twice a day, or on demand with `/stats post`. It shows
-  visitors and pageviews for today, yesterday, and the last week, then the
-  most visited blogs and the busiest app pages, events, countries, referrers,
-  and devices from the last 24 hours. See [Stats reports](#stats-reports).
+  visitors and pageviews for today, yesterday, and the last week, plus the
+  most visited blogs from the last 24 hours. See
+  [Stats reports](#stats-reports).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -177,11 +177,12 @@ anonymous Umami analytics in that channel. The message is edited in place, so
 the channel holds one current report instead of a feed of stale ones. A deleted
 dashboard is reposted on the next run.
 
-The first embed covers today so far, yesterday with its change against the day
-before, the last seven days, and yesterday's average visit and bounce rate. The
-second covers the last 24 hours: the most visited blogs as links to
-`bdsmlr.zastraea.xyz/<blog>`, the busiest app pages, Umami events such as
-searches and likes, countries, referrers, and devices.
+The report covers today so far, yesterday with its change against the day
+before, the last seven days, yesterday's average visit and bounce rate, and
+the five most visited blogs of the last 24 hours as links to
+`bdsmlr.zastraea.xyz/<blog>`. It deliberately leaves out app internals and
+visitor breakdowns, so the channel stays useful to people who do not work on
+the site.
 
 Blog names come from the page paths bbdsmlr records. Its tracker only sends
 canonical paths, so `/rectrix` and `/rectrix/archive` both count as the blog
