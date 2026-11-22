@@ -477,13 +477,14 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 
 	case discordgo.InteractionApplicationCommandAutocomplete:
 		name := i.ApplicationCommandData().Name
-		if !CanUseBot(i) {
-			b.Log.Warn("rejected autocomplete from non-admin",
+		if denial := b.commandDenial(ctx, i, name); denial != "" {
+			b.Log.Warn("rejected autocomplete",
 				"command", name,
 				"user_id", InteractionUserID(i),
+				"reason", denial,
 			)
 			if err := RespondAutocomplete(s, i, []*discordgo.ApplicationCommandOptionChoice{}); err != nil {
-				b.Log.Warn("replying to non-admin autocomplete", "err", err)
+				b.Log.Warn("replying to rejected autocomplete", "err", err)
 			}
 			return
 		}

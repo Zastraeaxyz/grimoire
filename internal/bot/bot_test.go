@@ -172,13 +172,13 @@ func TestCommandDenial(t *testing.T) {
 func TestCommandDenialAllowsPublicCommands(t *testing.T) {
 	b := &Bot{
 		Log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
-		publicCommands: map[string]struct{}{"chastity": {}},
+		publicCommands: map[string]struct{}{"cs": {}},
 		userCommands:   map[string]struct{}{},
 	}
 	member := &discordgo.Member{}
 	i := &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{Member: member}}
 
-	if got := b.commandDenial(context.Background(), i, "chastity"); got != "" {
+	if got := b.commandDenial(context.Background(), i, "cs"); got != "" {
 		t.Fatalf("commandDenial = %q, want access", got)
 	}
 	if got := b.commandDenial(context.Background(), i, "rss"); !strings.Contains(got, "Manage Server") {
