@@ -252,7 +252,7 @@ func TestUpdatePayloads(t *testing.T) {
 				_, err := c.Freeze(context.Background(), "lock-id", true)
 				return err
 			},
-			want: map[string]any{"id": "lock-id", "frozenbykh": "yes"},
+			want: map[string]any{"id": "lock-id", "frozenbykh": true},
 		},
 		{
 			name: "hide",
@@ -260,7 +260,7 @@ func TestUpdatePayloads(t *testing.T) {
 				_, err := c.Hide(context.Background(), "lock-id", false)
 				return err
 			},
-			want: map[string]any{"id": "lock-id", "hidden": "no"},
+			want: map[string]any{"id": "lock-id", "hidden": false},
 		},
 		{
 			name: "purpose",
@@ -379,6 +379,64 @@ func TestPick(t *testing.T) {
 	}
 	if result.Lock == nil || result.Lock.Deck.Reds() != 1 {
 		t.Fatalf("lock = %+v", result.Lock)
+	}
+}
+
+func TestTrust(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/trust" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["lockId"] != "lock-id" || body["time"] != float64(3600) {
+			t.Errorf("body = %+v", body)
+		}
+		_, _ = io.WriteString(w, `{"status":0,"locked":true,"lock":{"id":"lock-id","trustendtime":"2027-01-21T07:29:29Z","remainingguaranteed":86399}}`)
+	})
+	lock, err := client.Trust(context.Background(), "lock-id", time.Hour)
+	if err != nil {
+		t.Fatalf("Trust: %v", err)
+	}
+	if lock == nil || lock.TrustEndTime.IsZero() || lock.RemainingGuaranteed != 86399 {
+		t.Fatalf("lock = %+v", lock)
+	}
+}
+
+func TestSplit(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/split" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["lockid"] != "lock-id" || body["count"] != float64(2) {
+			t.Errorf("body = %+v", body)
+		}
+		_, _ = io.WriteString(w, `{"status":0,"locks":[{"id":"fake-1","type":"card"},{"id":"lock-id","type":"card"}]}`)
+	})
+	locks, err := client.Split(context.Background(), "lock-id", 2)
+	if err != nil {
+		t.Fatalf("Split: %v", err)
+	}
+	if len(locks) != 2 || locks[0].ID != "fake-1" {
+		t.Fatalf("locks = %+v", locks)
+	}
+}
+
+func TestUnlockUsesKeyholderPath(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/unlock/lock-id" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"status":0}`)
+	})
+	if _, err := client.Unlock(context.Background(), "lock-id"); err != nil {
+		t.Fatalf("Unlock: %v", err)
 	}
 }
 

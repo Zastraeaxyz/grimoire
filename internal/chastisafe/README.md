@@ -137,6 +137,7 @@ Lockee actions:
 | GET | `/hygieneskip/{id}` | Skip a hygiene unlock |
 | GET | `/putgreenback/{id}` | Return the last green card |
 | POST | `/respond/{id}` | Answer a keyholder prompt |
+| POST | `/trust` | Extend the lockee trust period |
 | GET | `/taskpick/{lock}` | Draw a task |
 | GET | `/taskcomplete/{lock}` | Complete a task |
 | GET | `/taskabandon/{lock}` | Abandon a task |
@@ -152,7 +153,6 @@ Keyholder actions:
 | POST | `/update` | Add or remove cards |
 | POST | `/clear` | Clear warning flags |
 | POST | `/split` | Create fake locks |
-| POST | `/trust` | Set a trust period |
 | POST | `/taskassign` | Assign a task roller item |
 | POST | `/startpillory` | Start a pillory |
 | GET | `/cancelpillory/{id}` | Cancel a pillory |
@@ -187,15 +187,14 @@ Checked against a live account:
 - a lockee is denied when trying to modify a green card
 - template create, partial update, card range edit, background, simulate and
   delete
+- with a second account: `/lockees`, keyholder freeze, hide, remaining time,
+  purpose change, card edits, split and unlock
+- lockee trust extension
 - a self-lock returns `locknotfound` for `frozenbykh`, `hidden`,
   `remainingtime` and similar keyholder fields
 
 Not yet checked against a real keyholder account:
 
-- `Unlock`
-- `Freeze`, `Hide`, `SetRemainingTime`, `SetPurpose`
-- `UpdateCards`, `AddCards`, `RemoveCards` for a real keyholder account
-- `Split`
 - keyholder task, pillory and script actions
 
 The request shapes for those actions come from the web client. A self-lock
@@ -214,6 +213,13 @@ keyholder writes with `locknotfound`.
   `{"status":0}`. The client handles both.
 - `POST /update` succeeds for a self-lock with `addtime` but not with
   keyholder fields.
+- Loaded-lock `frozenbykh`, `hidden` and `cumulative` require JSON booleans.
+  Template `hidden`, `startfrozen` and `cumulative` are the strings `yes`,
+  `no` or `randomize`.
+- `POST /trust` is a lockee action. It works with a duration in seconds.
+  Calling it as the keyholder returns an internal error.
+- `SetPurpose` works for an allowed purpose. In testing, changing a lock whose
+  purpose was already `TEST` back to `CHASTITY` returned `locknotfound`.
 - `GET /open/{id}` is the lockee path. `GET /unlock/{id}` is the keyholder
   path.
 - `deck` is a map of card name to remaining count. The app also accepts the
@@ -237,7 +243,16 @@ and delete a template, load a lock, and clean up:
 
 ```sh
 CHASTISAFE_DEV_CODE=... CHASTISAFE_WRITE_TEST=1 \
-  go test -run 'TestIntegration(Template|Timer)Lifecycle' -v ./internal/chastisafe
+  go test -run 'TestIntegration(Template|Timer)Lifecycle|TestIntegrationLockeeCardUpdate' -v ./internal/chastisafe
+```
+
+Two-account keyholder test:
+
+```sh
+CHASTISAFE_WRITE_TEST=1 \
+  CHASTISAFE_KEYHOLDER_DEV_CODE=... \
+  CHASTISAFE_LOCKEE_DEV_CODE=... \
+  go test -run TestIntegrationKeyholderActions -v ./internal/chastisafe
 ```
 
 Do not run the write tests against an account that matters.

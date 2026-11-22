@@ -75,51 +75,7 @@ func TestIntegrationTemplateLifecycle(t *testing.T) {
 	defer cancel()
 
 	name := fmt.Sprintf("grimoire smoke %d", time.Now().Unix())
-	spec := map[string]any{
-		"id":                       "id",
-		"keyholder":                nil,
-		"lockname":                 name,
-		"locktype":                 "CARDLOCK",
-		"hidden":                   "no",
-		"startfrozen":              "no",
-		"checkinperiod":            0,
-		"checkintolerance":         0,
-		"firstcheckin":             0,
-		"checkInMissPenalty":       "",
-		"timerMin":                 0,
-		"timerMax":                 0,
-		"cumulative":               "yes",
-		"regularity":               60,
-		"autoresetperiod":          0,
-		"autoresetcount":           0,
-		"cards":                    []map[string]any{{"name": "GREEN", "min": 1, "max": 1}},
-		"requiredgreens":           1,
-		"botid":                    nil,
-		"botname":                  nil,
-		"contactkeyholder":         false,
-		"blocklocked":              false,
-		"fakesmin":                 0,
-		"fakesmax":                 0,
-		"trusttime":                0,
-		"dicecount":                1,
-		"dicefaces":                6,
-		"lockees":                  0,
-		"hygieneunlockperiod":      0,
-		"hygieneunlockduration":    0,
-		"firsthygieneunlock":       0,
-		"hygieneRelockMissPenalty": "",
-		"taskrollerid":             nil,
-		"taskMissPenalty":          "",
-		"status":                   "ENABLED",
-		"allowedpurposes":          3,
-		"minimumduration":          0,
-		"minimumdurationenabled":   false,
-		"allowupdates":             true,
-		"description":              "grimoire smoke test",
-		"passcode":                 nil,
-		"pinkscript":               "",
-		"background":               "pexels-pixabay-65650.jpg",
-	}
+	spec := cardTemplateSpec(name, []map[string]any{{"name": "GREEN", "min": 1, "max": 1}}, 1, 0)
 	if err := client.CreateTemplate(ctx, spec); err != nil {
 		t.Fatalf("CreateTemplate: %v", err)
 	}
@@ -274,51 +230,7 @@ func TestIntegrationTimerLifecycle(t *testing.T) {
 	defer cancel()
 
 	name := fmt.Sprintf("grimoire timer smoke %d", time.Now().Unix())
-	spec := map[string]any{
-		"id":                       "id",
-		"keyholder":                nil,
-		"lockname":                 name,
-		"locktype":                 "TIMEDLOCK",
-		"hidden":                   "no",
-		"startfrozen":              "no",
-		"checkinperiod":            0,
-		"checkintolerance":         0,
-		"firstcheckin":             0,
-		"checkInMissPenalty":       "",
-		"timerMin":                 300,
-		"timerMax":                 600,
-		"cumulative":               "no",
-		"regularity":               0,
-		"autoresetperiod":          0,
-		"autoresetcount":           0,
-		"cards":                    []map[string]any{},
-		"requiredgreens":           0,
-		"botid":                    nil,
-		"botname":                  nil,
-		"contactkeyholder":         false,
-		"blocklocked":              false,
-		"fakesmin":                 0,
-		"fakesmax":                 0,
-		"trusttime":                0,
-		"dicecount":                1,
-		"dicefaces":                6,
-		"lockees":                  0,
-		"hygieneunlockperiod":      0,
-		"hygieneunlockduration":    0,
-		"firsthygieneunlock":       0,
-		"hygieneRelockMissPenalty": "",
-		"taskrollerid":             nil,
-		"taskMissPenalty":          "",
-		"status":                   "ENABLED",
-		"allowedpurposes":          3,
-		"minimumduration":          0,
-		"minimumdurationenabled":   false,
-		"allowupdates":             true,
-		"description":              "grimoire timer smoke test",
-		"passcode":                 nil,
-		"pinkscript":               "",
-		"background":               "pexels-pixabay-65650.jpg",
-	}
+	spec := timerTemplateSpec(name, 300, 600, 0)
 	if err := client.CreateTemplate(ctx, spec); err != nil {
 		t.Fatalf("CreateTemplate: %v", err)
 	}
@@ -406,27 +318,7 @@ func TestIntegrationLockeeCardUpdate(t *testing.T) {
 	defer cancel()
 
 	name := fmt.Sprintf("grimoire cards smoke %d", time.Now().Unix())
-	spec := map[string]any{
-		"id": "id", "keyholder": nil, "lockname": name, "locktype": "CARDLOCK",
-		"hidden": "no", "startfrozen": "no", "checkinperiod": 0,
-		"checkintolerance": 0, "firstcheckin": 0, "checkInMissPenalty": "",
-		"timerMin": 0, "timerMax": 0, "cumulative": "yes", "regularity": 60,
-		"autoresetperiod": 0, "autoresetcount": 0,
-		"cards": []map[string]any{
-			{"name": "GREEN", "min": 1, "max": 1},
-			{"name": "YELLOWP1", "min": 1, "max": 1},
-		},
-		"requiredgreens": 1001, "botid": nil, "botname": nil,
-		"contactkeyholder": false, "blocklocked": false, "fakesmin": 0,
-		"fakesmax": 0, "trusttime": 0, "dicecount": 1, "dicefaces": 6,
-		"lockees": 0, "hygieneunlockperiod": 0, "hygieneunlockduration": 0,
-		"firsthygieneunlock": 0, "hygieneRelockMissPenalty": "",
-		"taskrollerid": nil, "taskMissPenalty": "", "status": "ENABLED",
-		"allowedpurposes": 3, "minimumduration": 0,
-		"minimumdurationenabled": false, "allowupdates": true,
-		"description": "grimoire card update smoke test", "passcode": nil,
-		"pinkscript": "", "background": "pexels-pixabay-65650.jpg",
-	}
+	spec := cardTemplateSpec(name, []map[string]any{{"name": "GREEN", "min": 1, "max": 1}, {"name": "YELLOWP1", "min": 1, "max": 1}}, 1001, 0)
 	if err := client.CreateTemplate(ctx, spec); err != nil {
 		t.Fatalf("CreateTemplate: %v", err)
 	}
@@ -488,5 +380,304 @@ func TestIntegrationLockeeCardUpdate(t *testing.T) {
 
 	if err := client.Abandon(ctx, lock.ID); err != nil {
 		t.Fatalf("Abandon: %v", err)
+	}
+}
+
+func templateSpecBase(name, lockType string) map[string]any {
+	return map[string]any{
+		"id":                       "id",
+		"keyholder":                nil,
+		"lockname":                 name,
+		"locktype":                 lockType,
+		"hidden":                   "no",
+		"startfrozen":              "no",
+		"checkinperiod":            0,
+		"checkintolerance":         0,
+		"firstcheckin":             0,
+		"checkInMissPenalty":       "",
+		"timerMin":                 0,
+		"timerMax":                 0,
+		"cumulative":               "no",
+		"regularity":               0,
+		"autoresetperiod":          0,
+		"autoresetcount":           0,
+		"cards":                    []map[string]any{},
+		"requiredgreens":           0,
+		"botid":                    nil,
+		"botname":                  nil,
+		"contactkeyholder":         false,
+		"blocklocked":              false,
+		"fakesmin":                 0,
+		"fakesmax":                 0,
+		"trusttime":                0,
+		"dicecount":                1,
+		"dicefaces":                6,
+		"lockees":                  0,
+		"hygieneunlockperiod":      0,
+		"hygieneunlockduration":    0,
+		"firsthygieneunlock":       0,
+		"hygieneRelockMissPenalty": "",
+		"taskrollerid":             nil,
+		"taskMissPenalty":          "",
+		"status":                   "ENABLED",
+		"allowedpurposes":          3,
+		"minimumduration":          0,
+		"minimumdurationenabled":   false,
+		"allowupdates":             true,
+		"description":              "grimoire smoke test",
+		"passcode":                 nil,
+		"pinkscript":               "",
+		"background":               "pexels-pixabay-65650.jpg",
+	}
+}
+
+func timerTemplateSpec(name string, minSeconds, maxSeconds, trustSeconds int) map[string]any {
+	spec := templateSpecBase(name, "TIMEDLOCK")
+	spec["timerMin"] = minSeconds
+	spec["timerMax"] = maxSeconds
+	spec["trusttime"] = trustSeconds
+	spec["cumulative"] = "no"
+	spec["regularity"] = 0
+	return spec
+}
+
+func cardTemplateSpec(name string, cards []map[string]any, requiredGreens, trustSeconds int) map[string]any {
+	spec := templateSpecBase(name, "CARDLOCK")
+	spec["cards"] = cards
+	spec["requiredgreens"] = requiredGreens
+	spec["trusttime"] = trustSeconds
+	spec["cumulative"] = "yes"
+	spec["regularity"] = 60
+	return spec
+}
+
+func findTemplateByName(t *testing.T, client *Client, name string) *Template {
+	t.Helper()
+	templates, err := client.Templates(context.Background())
+	if err != nil {
+		t.Fatalf("Templates: %v", err)
+	}
+	for i := range templates {
+		if templates[i].LockName == name {
+			return &templates[i]
+		}
+	}
+	return nil
+}
+
+// TestIntegrationKeyholderActions exercises the keyholder-only paths with two
+// real accounts. It creates and removes templates and locks, so it is gated by
+// CHASTISAFE_WRITE_TEST, CHASTISAFE_KEYHOLDER_DEV_CODE and
+// CHASTISAFE_LOCKEE_DEV_CODE.
+func TestIntegrationKeyholderActions(t *testing.T) {
+	if os.Getenv("CHASTISAFE_WRITE_TEST") != "1" {
+		t.Skip("CHASTISAFE_WRITE_TEST is not 1")
+	}
+	keyholderCode := os.Getenv("CHASTISAFE_KEYHOLDER_DEV_CODE")
+	lockeeCode := os.Getenv("CHASTISAFE_LOCKEE_DEV_CODE")
+	if keyholderCode == "" || lockeeCode == "" {
+		t.Skip("CHASTISAFE_KEYHOLDER_DEV_CODE and CHASTISAFE_LOCKEE_DEV_CODE are required")
+	}
+	keyholder, err := New(Options{Token: keyholderCode})
+	if err != nil {
+		t.Fatalf("New keyholder: %v", err)
+	}
+	lockee, err := New(Options{Token: lockeeCode})
+	if err != nil {
+		t.Fatalf("New lockee: %v", err)
+	}
+	keyholderWho, err := keyholder.Who(context.Background())
+	if err != nil {
+		t.Fatalf("keyholder Who: %v", err)
+	}
+	lockeeWho, err := lockee.Who(context.Background())
+	if err != nil {
+		t.Fatalf("lockee Who: %v", err)
+	}
+	if keyholderWho.ID == lockeeWho.ID {
+		t.Fatal("keyholder and lockee tokens resolve to the same account")
+	}
+	t.Logf("keyholder %s (%s), lockee %s (%s)", keyholderWho.User, keyholderWho.ID, lockeeWho.User, lockeeWho.ID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	timerName := fmt.Sprintf("grimoire kh timer %d", time.Now().Unix())
+	if err := keyholder.CreateTemplate(ctx, timerTemplateSpec(timerName, 300, 600, 3600)); err != nil {
+		t.Fatalf("CreateTemplate timer: %v", err)
+	}
+	timerTemplate := findTemplateByName(t, keyholder, timerName)
+	if timerTemplate == nil {
+		t.Fatalf("timer template %q not found", timerName)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := keyholder.DeleteTemplate(cleanupCtx, timerTemplate.ID); err != nil {
+			t.Logf("cleanup timer template: %v", err)
+		}
+	})
+
+	timerLocks, err := lockee.Load(ctx, LoadRequest{
+		TemplateID: timerTemplate.ID,
+		Code:       "1234",
+		Purpose:    PurposeChastity,
+	})
+	if err != nil {
+		t.Fatalf("Load timer: %v", err)
+	}
+	timerLock := timerLocks[0]
+	t.Cleanup(func() { cleanupLoadedLock(t, lockee, timerLock.ID) })
+	t.Logf("loaded timer lock %s", timerLock.ID)
+
+	lockees, err := keyholder.Lockees(ctx)
+	if err != nil {
+		t.Fatalf("Lockees: %v", err)
+	}
+	found := false
+	for _, entry := range lockees {
+		if entry.ID == timerLock.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("keyholder does not see lock %s", timerLock.ID)
+	}
+
+	frozen, err := keyholder.Freeze(ctx, timerLock.ID, true)
+	if err != nil {
+		t.Fatalf("Freeze: %v", err)
+	}
+	if frozen != nil && !frozen.FrozenByKeyholder {
+		t.Fatalf("Freeze response not frozen: %+v", frozen)
+	}
+	state, _, err := lockee.LoadedLock(ctx, timerLock.ID)
+	if err != nil {
+		t.Fatalf("LoadedLock after freeze: %v", err)
+	}
+	if !state.FrozenByKeyholder {
+		t.Fatal("lockee does not see the keyholder freeze")
+	}
+
+	if _, err := keyholder.Hide(ctx, timerLock.ID, true); err != nil {
+		t.Fatalf("Hide: %v", err)
+	}
+	state, _, err = lockee.LoadedLock(ctx, timerLock.ID)
+	if err != nil {
+		t.Fatalf("LoadedLock after hide: %v", err)
+	}
+	if !state.Hidden {
+		t.Fatal("lockee does not see the hidden flag")
+	}
+
+	if _, err := keyholder.Freeze(ctx, timerLock.ID, false); err != nil {
+		t.Fatalf("Unfreeze: %v", err)
+	}
+	if _, err := keyholder.Hide(ctx, timerLock.ID, false); err != nil {
+		t.Fatalf("Unhide: %v", err)
+	}
+	updated, err := keyholder.SetRemainingTime(ctx, timerLock.ID, 10*time.Minute)
+	if err != nil {
+		t.Fatalf("SetRemainingTime: %v", err)
+	}
+	if updated != nil && updated.TimerRemaining < 590 {
+		t.Fatalf("remaining after set = %d, want about 600", updated.TimerRemaining)
+	}
+	state, _, err = lockee.LoadedLock(ctx, timerLock.ID)
+	if err != nil {
+		t.Fatalf("LoadedLock after remaining: %v", err)
+	}
+	if state.TimerRemaining < 590 {
+		t.Fatalf("lockee remaining = %d, want about 600", state.TimerRemaining)
+	}
+
+	trusted, err := lockee.Trust(ctx, timerLock.ID, time.Hour)
+	if err != nil {
+		t.Fatalf("Trust: %v", err)
+	}
+	if trusted != nil && trusted.TrustEndTime.IsZero() && trusted.RemainingGuaranteed == 0 {
+		t.Fatalf("trust response has no trust end: %+v", trusted)
+	}
+
+	if _, err := keyholder.Unlock(ctx, timerLock.ID); err != nil {
+		t.Fatalf("Unlock timer: %v", err)
+	}
+	loaded, err := lockee.Loaded(ctx)
+	if err != nil {
+		t.Fatalf("Loaded after timer unlock: %v", err)
+	}
+	for _, lock := range loaded {
+		if lock.ID == timerLock.ID {
+			t.Fatal("timer lock still loaded after keyholder unlock")
+		}
+	}
+
+	cardName := fmt.Sprintf("grimoire kh card %d", time.Now().Unix())
+	cardSpec := cardTemplateSpec(cardName, []map[string]any{
+		{"name": "GREEN", "min": 1, "max": 1},
+		{"name": "RED", "min": 1, "max": 1},
+	}, 1, 3600)
+	if err := keyholder.CreateTemplate(ctx, cardSpec); err != nil {
+		t.Fatalf("CreateTemplate card: %v", err)
+	}
+	cardTemplate := findTemplateByName(t, keyholder, cardName)
+	if cardTemplate == nil {
+		t.Fatalf("card template %q not found", cardName)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := keyholder.DeleteTemplate(cleanupCtx, cardTemplate.ID); err != nil {
+			t.Logf("cleanup card template: %v", err)
+		}
+	})
+
+	cardLocks, err := lockee.Load(ctx, LoadRequest{
+		TemplateID: cardTemplate.ID,
+		Code:       "4321",
+		Purpose:    PurposeChastity,
+	})
+	if err != nil {
+		t.Fatalf("Load card: %v", err)
+	}
+	cardLock := cardLocks[0]
+	t.Cleanup(func() { cleanupLoadedLock(t, lockee, cardLock.ID) })
+	t.Logf("loaded card lock %s deck=%v", cardLock.ID, cardLock.Deck)
+
+	if _, err := keyholder.UpdateCards(ctx, cardLock.ID, []CardChange{
+		{Card: CardGreen, Delta: 1},
+		{Card: CardRed, Delta: -1},
+	}, UpdateOptions{Message: "keyholder card update", Show: true}); err != nil {
+		t.Fatalf("UpdateCards keyholder: %v", err)
+	}
+	state, _, err = lockee.LoadedLock(ctx, cardLock.ID)
+	if err != nil {
+		t.Fatalf("LoadedLock after card update: %v", err)
+	}
+	if state.Deck.Greens() != 2 || state.Deck.Reds() != 0 {
+		t.Fatalf("deck after keyholder update = %v, want 2 green and 0 red", state.Deck)
+	}
+
+	split, err := keyholder.Split(ctx, cardLock.ID, 2)
+	if err != nil {
+		t.Fatalf("Split: %v", err)
+	}
+	if len(split) < 2 {
+		t.Fatalf("Split returned %d locks", len(split))
+	}
+	for _, lock := range split {
+		if _, err := keyholder.Unlock(ctx, lock.ID); err != nil {
+			t.Fatalf("Unlock split lock %s: %v", lock.ID, err)
+		}
+	}
+	loaded, err = lockee.Loaded(ctx)
+	if err != nil {
+		t.Fatalf("Loaded after card unlock: %v", err)
+	}
+	for _, lock := range loaded {
+		if lock.ID == cardLock.ID || lock.RealLockID == cardLock.ID {
+			t.Fatalf("card lock still loaded after split unlock: %+v", lock)
+		}
 	}
 }
