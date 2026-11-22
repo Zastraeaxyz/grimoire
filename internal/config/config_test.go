@@ -111,3 +111,77 @@ func TestLoadBdsmlrSession(t *testing.T) {
 		t.Fatalf("BDSMLRSession = %q", cfg.BDSMLRSession)
 	}
 }
+
+func TestLoadRoleplayDefaults(t *testing.T) {
+	t.Setenv("DISCORD_TOKEN", "token")
+	t.Setenv("GUILD_ID", "123")
+	for _, key := range []string{
+		"DISCORD_ROLEPLAY_TOKEN", "ROLEPLAY_LOCKEE_ROLE_ID", "OPENROUTER_API_KEY",
+		"ROLEPLAY_CHASTITY_ENABLED", "CHASTISAFE_KEYHOLDER_CODE", "CHASTISAFE_BASE_URL",
+	} {
+		t.Setenv(key, "")
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Roleplay.Enabled() {
+		t.Fatal("roleplay should be off without a token")
+	}
+	if cfg.Roleplay.BotName != "Keyholder" {
+		t.Fatalf("BotName = %q", cfg.Roleplay.BotName)
+	}
+	if cfg.Roleplay.ContextMessages != 15 || cfg.Roleplay.MaxChunks != 3 {
+		t.Fatalf("roleplay limits = %+v", cfg.Roleplay)
+	}
+	if cfg.OpenRouterModel != defaultOpenRouterModel {
+		t.Fatalf("OpenRouterModel = %q", cfg.OpenRouterModel)
+	}
+}
+
+func TestLoadRoleplayRequiresCompanionSettings(t *testing.T) {
+	t.Setenv("DISCORD_TOKEN", "token")
+	t.Setenv("GUILD_ID", "123")
+	t.Setenv("DISCORD_ROLEPLAY_TOKEN", "roleplay-token")
+
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{name: "missing OpenRouter key", key: "OPENROUTER_API_KEY"},
+		{name: "missing lockee role", key: "ROLEPLAY_LOCKEE_ROLE_ID"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("OPENROUTER_API_KEY", "key")
+			t.Setenv("ROLEPLAY_LOCKEE_ROLE_ID", "456")
+			t.Setenv(tc.key, "")
+			if _, err := Load(); err == nil {
+				t.Fatal("expected an error")
+			}
+		})
+	}
+}
+
+func TestLoadRoleplayEnabled(t *testing.T) {
+	t.Setenv("DISCORD_TOKEN", "token")
+	t.Setenv("GUILD_ID", "123")
+	t.Setenv("DISCORD_ROLEPLAY_TOKEN", "roleplay-token")
+	t.Setenv("OPENROUTER_API_KEY", "key")
+	t.Setenv("ROLEPLAY_LOCKEE_ROLE_ID", "456")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Roleplay.Enabled() {
+		t.Fatal("roleplay should be enabled")
+	}
+	if cfg.Roleplay.LockeeRoleID != "456" {
+		t.Fatalf("LockeeRoleID = %q", cfg.Roleplay.LockeeRoleID)
+	}
+	if !cfg.Roleplay.Chastity.Enabled {
+		t.Fatal("chastity should default to on")
+	}
+}

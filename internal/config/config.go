@@ -51,7 +51,45 @@ type Config struct {
 	WelcomeChannelID string
 	BaseRoleID       string
 	StatsChannelID   string
+
+	// OpenRouter is shared by AI features. Only the roleplay bot needs it for
+	// now.
+	OpenRouterAPIKey  string
+	OpenRouterModel   string
+	OpenRouterBaseURL string
+
+	// Roleplay is the optional second Discord bot. It stays offline when its
+	// token is empty.
+	Roleplay RoleplayConfig
 }
+
+// RoleplayConfig configures the persona bot that runs next to Grimoire.
+type RoleplayConfig struct {
+	Token            string
+	BotName          string
+	LockeeRoleID     string
+	SystemPromptFile string
+	SystemPrompt     string
+	ContextMessages  int
+	MaxChunks        int
+	Timeout          time.Duration
+	MaxConcurrent    int
+	RateLimitCount   int
+	RateLimitWindow  time.Duration
+
+	// Chastity enables the read-only ChastiSafe status display.
+	Chastity ChastityConfig
+}
+
+// ChastityConfig binds the persona to one ChastiSafe keyholder account.
+type ChastityConfig struct {
+	Enabled       bool
+	KeyholderCode string
+	BaseURL       string
+}
+
+// Enabled reports whether the roleplay bot has a token.
+func (r RoleplayConfig) Enabled() bool { return r.Token != "" }
 
 // Load reads configuration from .env (when present) and the environment.
 func Load() (*Config, error) {
@@ -75,7 +113,17 @@ func Load() (*Config, error) {
 		StatsSiteURL:     envOr("STATS_SITE_URL", "https://bdsmlr.zastraea.xyz"),
 		StatsTimezone:    envOr("STATS_TIMEZONE", "UTC"),
 		StatsChannelID:   strings.TrimSpace(os.Getenv("STATS_CHANNEL_ID")),
+		OpenRouterAPIKey: strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")),
+		OpenRouterModel:  envOr("OPENROUTER_MODEL", defaultOpenRouterModel),
+		OpenRouterBaseURL: envOr("OPENROUTER_BASE_URL",
+			"https://openrouter.ai/api/v1"),
 	}
+
+	roleplay, err := loadRoleplay()
+	if err != nil {
+		return nil, err
+	}
+	cfg.Roleplay = roleplay
 
 	interval, err := time.ParseDuration(envOr("RSS_POLL_INTERVAL", "1h"))
 	if err != nil {
@@ -109,6 +157,61 @@ func Load() (*Config, error) {
 
 const defaultStatsTimes = "09:00,21:00"
 
+const defaultOpenRouterModel = "deepseek/deepseek-v4.1-flash-1017"
+
+// loadRoleplay reads the optional second bot configuration. Every value has a
+// safe default except the token, the lockee role, and the OpenRouter key.
+func loadRoleplay() (RoleplayConfig, error) {
+	chastityEnabled, err := envBool("ROLEPLAY_CHASTITY_ENABLED", true)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+
+	contextMessages, err := envInt("ROLEPLAY_CONTEXT_MESSAGES", 15)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	maxChunks, err := envInt("ROLEPLAY_MAX_CHUNKS", 3)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	timeout, err := envDuration("ROLEPLAY_TIMEOUT_SECONDS", 60*time.Second)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	maxConcurrent, err := envInt("ROLEPLAY_MAX_CONCURRENT", 2)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	rateLimitCount, err := envInt("ROLEPLAY_RATE_LIMIT_CAPACITY", 2)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	rateLimitWindow, err := envDuration("ROLEPLAY_RATE_LIMIT_SECONDS", 10*time.Second)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+
+	return RoleplayConfig{
+		Token:            strings.TrimSpace(os.Getenv("DISCORD_ROLEPLAY_TOKEN")),
+		BotName:          envOr("ROLEPLAY_BOT_NAME", "Keyholder"),
+		LockeeRoleID:     strings.TrimSpace(os.Getenv("ROLEPLAY_LOCKEE_ROLE_ID")),
+		SystemPromptFile: envOr("ROLEPLAY_SYSTEM_PROMPT_FILE", "./prompts/keyholder.md"),
+		SystemPrompt:     strings.TrimSpace(os.Getenv("ROLEPLAY_SYSTEM_PROMPT")),
+		ContextMessages:  contextMessages,
+		MaxChunks:        maxChunks,
+		Timeout:          timeout,
+		MaxConcurrent:    maxConcurrent,
+		RateLimitCount:   rateLimitCount,
+		RateLimitWindow:  rateLimitWindow,
+		Chastity: ChastityConfig{
+			Enabled:       chastityEnabled,
+			KeyholderCode: strings.TrimSpace(os.Getenv("CHASTISAFE_KEYHOLDER_CODE")),
+			BaseURL:       strings.TrimSpace(os.Getenv("CHASTISAFE_BASE_URL")),
+		},
+	}, nil
+}
+
 func (c *Config) validate() error {
 	if c.Token == "" {
 		return errors.New("DISCORD_TOKEN is required")
@@ -137,6 +240,9 @@ func (c *Config) validate() error {
 	if _, err := time.LoadLocation(c.StatsTimezone); err != nil {
 		return fmt.Errorf("STATS_TIMEZONE %q is not a time zone: %w", c.StatsTimezone, err)
 	}
+	if err := c.validateRoleplay(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -153,6 +259,72 @@ func (c *Config) validateUmami() error {
 		return nil
 	}
 	return errors.New("UMAMI_URL, UMAMI_WEBSITE_ID and UMAMI_API_KEY must be set together, or all left empty")
+}
+
+// validateRoleplay validates the second bot only when it is turned on. A
+// misconfigured persona should not silently run as a bot nobody can use.
+func (c *Config) validateRoleplay() error {
+	rp := c.Roleplay
+	if !rp.Enabled() {
+		return nil
+	}
+	if c.OpenRouterAPIKey == "" {
+		return errors.New("OPENROUTER_API_KEY is required when DISCORD_ROLEPLAY_TOKEN is set")
+	}
+	if c.OpenRouterModel == "" {
+		return errors.New("OPENROUTER_MODEL must not be empty")
+	}
+	if _, err := strconv.ParseUint(rp.LockeeRoleID, 10, 64); err != nil {
+		return fmt.Errorf("ROLEPLAY_LOCKEE_ROLE_ID %q is not a valid Discord snowflake", rp.LockeeRoleID)
+	}
+	if rp.BotName == "" {
+		return errors.New("ROLEPLAY_BOT_NAME must not be empty")
+	}
+	if rp.ContextMessages < 1 || rp.ContextMessages > 100 {
+		return errors.New("ROLEPLAY_CONTEXT_MESSAGES must be between 1 and 100")
+	}
+	if rp.MaxChunks < 1 || rp.MaxChunks > 10 {
+		return errors.New("ROLEPLAY_MAX_CHUNKS must be between 1 and 10")
+	}
+	if rp.Timeout < 5*time.Second {
+		return errors.New("ROLEPLAY_TIMEOUT_SECONDS must be at least 5")
+	}
+	if rp.MaxConcurrent < 1 {
+		return errors.New("ROLEPLAY_MAX_CONCURRENT must be at least 1")
+	}
+	if rp.RateLimitCount < 1 {
+		return errors.New("ROLEPLAY_RATE_LIMIT_CAPACITY must be at least 1")
+	}
+	if rp.RateLimitWindow < time.Second {
+		return errors.New("ROLEPLAY_RATE_LIMIT_SECONDS must be at least 1")
+	}
+	return nil
+}
+
+// envInt reads a positive or zero integer environment variable.
+func envInt(key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s %q is not an integer", key, raw)
+	}
+	return value, nil
+}
+
+// envDuration reads a duration from a plain number of seconds.
+func envDuration(key string, fallback time.Duration) (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s %q is not a number of seconds", key, raw)
+	}
+	return time.Duration(seconds) * time.Second, nil
 }
 
 func envOr(key, fallback string) string {
