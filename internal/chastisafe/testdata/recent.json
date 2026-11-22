@@ -1,0 +1,30 @@
+[
+  {
+    "lockid": "e164982d-749e-2eda-a235-1738d516957f",
+    "templateid": "7bf633a9-a640-63b5-d7c3-de598f1353eb",
+    "lockname": "Progressive 2",
+    "lockee": "testuser#0",
+    "keyholder": "SPC#0001",
+    "unlockreason": 1,
+    "rating": 0,
+    "loadtime": "2025-10-15T23:09:50Z",
+    "unlocktime": "2026-09-30T23:16:49Z",
+    "lockduration": 504006,
+    "lockcode": "5241",
+    "lockpurpose": "TEST"
+  },
+  {
+    "lockid": "9c2a9a9f-41ea-b8dd-4731-cfa68036f326",
+    "templateid": "7bf633a9-a640-63b5-d7c3-de598f1353eb",
+    "lockname": "Progressive 2",
+    "lockee": "testuser#0",
+    "keyholder": "SPC#0001",
+    "unlockreason": 0,
+    "rating": 0,
+    "loadtime": "2025-09-29T01:30:19Z",
+    "unlocktime": "2025-10-15T23:09:33Z",
+    "lockduration": 24339,
+    "lockcode": "0769",
+    "lockpurpose": "CHASTITY"
+  }
+]
