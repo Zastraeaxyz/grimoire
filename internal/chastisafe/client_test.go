@@ -58,6 +58,9 @@ func TestWho(t *testing.T) {
 		if got := r.Header.Get("chastisafedev"); got != "test-token" {
 			t.Errorf("chastisafedev = %q", got)
 		}
+		if got := r.Header.Get("Cookie"); got != "chastisafe=test-token" {
+			t.Errorf("cookie = %q", got)
+		}
 		if got := r.Header.Get("User-Agent"); got == "" {
 			t.Error("User-Agent is empty")
 		}
@@ -620,6 +623,9 @@ func TestWithToken(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("chastisafedev"); got != "other-token" {
 			t.Errorf("chastisafedev = %q", got)
+		}
+		if got := r.Header.Get("Cookie"); got != "chastisafe=other-token" {
+			t.Errorf("cookie = %q", got)
 		}
 		_, _ = io.WriteString(w, `{"status":0,"user":"other#0","id":"1"}`)
 	})

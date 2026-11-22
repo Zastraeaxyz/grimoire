@@ -13,15 +13,17 @@ feature can depend on it without pulling in bot code.
 
 ## Authentication
 
-Send the account's developer code in the `chastisafedev` header:
+Send the account's developer code in the `chastisafedev` header and the
+`chastisafe` cookie:
 
 ```
 chastisafedev: <developer code>
+Cookie: chastisafe=<developer code>
 ```
 
-The same value is stored in the browser cookie `chastisafe`. The header works
-without the cookie. `GET /profile` returns the code as `developercode`, so a
-member can copy it from their own profile.
+The live service currently accepts the cookie form and can return a server
+error for header-only requests, so the client sends both. Copy the code from the
+signed-in web app.
 
 Treat the code as a password:
 
@@ -200,7 +202,7 @@ Template management:
 
 Checked against a live account:
 
-- header authentication with `chastisafedev`
+- header and cookie authentication with `chastisafedev` and `chastisafe`
 - `/who`, `/profile`, `/locks`, `/loaded`, `/recent`
 - `/stats/{criterion}` leaderboard
 - `/profile/{id}` public profiles, including hidden-profile detection

@@ -7,9 +7,11 @@
 // server change only has one place to fix.
 //
 // Authentication is a per-account developer code sent in the chastisafedev
-// header. The same value is stored in the chastisafe cookie by the web app and
-// is returned by [Client.Profile]. Treat it as a password: never log it, never
-// commit it, and only store it for the account that owns it.
+// header. The code is also sent in the chastisafe cookie because the live
+// service accepts that form even when a header-only request fails. The same
+// value is stored in the chastisafe cookie by the web app. Treat it as a
+// password: never log it, never commit it, and only store it for the account
+// that owns it.
 //
 // # Example
 //

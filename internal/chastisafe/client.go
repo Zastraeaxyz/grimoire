@@ -184,6 +184,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 		return nil, fmt.Errorf("chastisafe: building %s %s: %w", method, path, err)
 	}
 	req.Header.Set(authHeader, c.token)
+	// The live service accepts the code in the chastisafe cookie even when a
+	// header-only request fails. Send both so either path authenticates.
+	req.Header.Set("Cookie", "chastisafe="+c.token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
 	if body != nil {
