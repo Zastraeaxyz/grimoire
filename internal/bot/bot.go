@@ -182,7 +182,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	b.Log.Info("authenticated with discord",
 		"user", me.Username,
 		"user_id", me.ID,
-		"guild_id", b.guildID,
+		"guild_id", b.guildIDValue(),
 	)
 
 	if err := b.Session.Open(); err != nil {
@@ -204,6 +204,8 @@ func (b *Bot) handleReady(s *discordgo.Session, r *discordgo.Ready) {
 		"user", r.User.Username,
 		"guilds", len(r.Guilds),
 	)
+
+	b.detectGuild(r)
 
 	if b.needsCommandSync() {
 		if err := b.syncCommands(s); err != nil {
@@ -258,6 +260,28 @@ func (b *Bot) handleMessageCreate(s *discordgo.Session, m *discordgo.MessageCrea
 	}
 }
 
+// detectGuild lets a bot without a configured guild use the only guild it is
+// in. That keeps a dedicated persona bot working without another ID to copy.
+func (b *Bot) detectGuild(r *discordgo.Ready) {
+	if r == nil || len(r.Guilds) != 1 {
+		return
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.guildID != "" {
+		return
+	}
+	b.guildID = r.Guilds[0].ID
+	b.Log.Info("using the only guild", "guild_id", b.guildID)
+}
+
+func (b *Bot) guildIDValue() string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.guildID
+}
+
 func (b *Bot) needsCommandSync() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -275,12 +299,13 @@ func (b *Bot) syncCommands(s *discordgo.Session) error {
 	sort.Slice(cmds, func(i, j int) bool { return cmds[i].Name < cmds[j].Name })
 
 	appID := s.State.User.ID
-	if b.guildID != "" {
-		_, err := s.ApplicationCommandBulkOverwrite(appID, b.guildID, cmds)
+	guildID := b.guildIDValue()
+	if guildID != "" {
+		_, err := s.ApplicationCommandBulkOverwrite(appID, guildID, cmds)
 		if err != nil {
 			return fmt.Errorf("overwriting guild commands: %w", err)
 		}
-		b.Log.Info("registered guild commands", "count", len(cmds), "guild_id", b.guildID)
+		b.Log.Info("registered guild commands", "count", len(cmds), "guild_id", guildID)
 		return nil
 	}
 

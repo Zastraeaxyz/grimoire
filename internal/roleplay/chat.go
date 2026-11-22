@@ -25,7 +25,10 @@ func (f *Feature) handleMessage(ctx context.Context, s *discordgo.Session, m *di
 	if m == nil || m.Message == nil || m.Author == nil || m.Author.Bot {
 		return nil
 	}
-	if m.WebhookID != "" || m.GuildID == "" || m.GuildID != f.guildID {
+	if m.WebhookID != "" || m.GuildID == "" {
+		return nil
+	}
+	if f.guildID != "" && m.GuildID != f.guildID {
 		return nil
 	}
 

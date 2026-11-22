@@ -111,6 +111,26 @@ func newTestBot() *Bot {
 	}
 }
 
+func TestDetectGuildUsesOnlyGuild(t *testing.T) {
+	b := newTestBot()
+	b.detectGuild(&discordgo.Ready{Guilds: []*discordgo.Guild{{ID: "guild-1"}}})
+	if got := b.guildIDValue(); got != "guild-1" {
+		t.Fatalf("guild = %q", got)
+	}
+
+	multiple := newTestBot()
+	multiple.detectGuild(&discordgo.Ready{Guilds: []*discordgo.Guild{{ID: "guild-1"}, {ID: "guild-2"}}})
+	if got := multiple.guildIDValue(); got != "" {
+		t.Fatalf("guild = %q, want empty for multiple guilds", got)
+	}
+
+	configured := &Bot{Log: slog.New(slog.NewTextHandler(io.Discard, nil)), guildID: "guild-9"}
+	configured.detectGuild(&discordgo.Ready{Guilds: []*discordgo.Guild{{ID: "guild-1"}}})
+	if got := configured.guildIDValue(); got != "guild-9" {
+		t.Fatalf("guild = %q, want the configured guild", got)
+	}
+}
+
 func TestOptionsIntents(t *testing.T) {
 	b, err := New(Options{Token: "token", Intents: discordgo.IntentsGuildMessages | discordgo.IntentMessageContent})
 	if err != nil {

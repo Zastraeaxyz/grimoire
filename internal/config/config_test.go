@@ -118,6 +118,7 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 	for _, key := range []string{
 		"DISCORD_ROLEPLAY_TOKEN", "ROLEPLAY_LOCKEE_ROLE_ID", "OPENROUTER_API_KEY",
 		"ROLEPLAY_CHASTITY_ENABLED", "CHASTISAFE_KEYHOLDER_CODE", "CHASTISAFE_BASE_URL",
+		"ROLEPLAY_GUILD_ID",
 	} {
 		t.Setenv(key, "")
 	}
@@ -162,6 +163,7 @@ func TestLoadRoleplayEnabled(t *testing.T) {
 	t.Setenv("DISCORD_ROLEPLAY_TOKEN", "roleplay-token")
 	t.Setenv("OPENROUTER_API_KEY", "key")
 	t.Setenv("ROLEPLAY_LOCKEE_ROLE_ID", "456")
+	t.Setenv("ROLEPLAY_GUILD_ID", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -173,7 +175,23 @@ func TestLoadRoleplayEnabled(t *testing.T) {
 	if cfg.Roleplay.LockeeRoleID != "456" {
 		t.Fatalf("LockeeRoleID = %q", cfg.Roleplay.LockeeRoleID)
 	}
+	if cfg.Roleplay.GuildID != "" {
+		t.Fatalf("GuildID = %q, want the persona to serve every guild by default", cfg.Roleplay.GuildID)
+	}
 	if !cfg.Roleplay.Chastity.Enabled {
 		t.Fatal("chastity should default to on")
+	}
+}
+
+func TestRoleplayGuildID(t *testing.T) {
+	t.Setenv("GUILD_ID", "123")
+	t.Setenv("ROLEPLAY_GUILD_ID", "")
+	if got := roleplayGuildID(); got != "" {
+		t.Fatalf("roleplayGuildID = %q, want an empty optional gate", got)
+	}
+
+	t.Setenv("ROLEPLAY_GUILD_ID", "456")
+	if got := roleplayGuildID(); got != "456" {
+		t.Fatalf("roleplayGuildID = %q", got)
 	}
 }

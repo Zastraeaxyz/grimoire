@@ -66,6 +66,7 @@ type Config struct {
 // RoleplayConfig configures the persona bot that runs next to Grimoire.
 type RoleplayConfig struct {
 	Token            string
+	GuildID          string
 	BotName          string
 	LockeeRoleID     string
 	SystemPromptFile string
@@ -194,6 +195,7 @@ func loadRoleplay() (RoleplayConfig, error) {
 
 	return RoleplayConfig{
 		Token:            strings.TrimSpace(os.Getenv("DISCORD_ROLEPLAY_TOKEN")),
+		GuildID:          roleplayGuildID(),
 		BotName:          envOr("ROLEPLAY_BOT_NAME", "Keyholder"),
 		LockeeRoleID:     strings.TrimSpace(os.Getenv("ROLEPLAY_LOCKEE_ROLE_ID")),
 		SystemPromptFile: envOr("ROLEPLAY_SYSTEM_PROMPT_FILE", "./prompts/keyholder.md"),
@@ -210,6 +212,12 @@ func loadRoleplay() (RoleplayConfig, error) {
 			BaseURL:       strings.TrimSpace(os.Getenv("CHASTISAFE_BASE_URL")),
 		},
 	}, nil
+}
+
+// roleplayGuildID returns the optional server lock for the persona. An empty
+// value lets it serve every guild it is invited to.
+func roleplayGuildID() string {
+	return strings.TrimSpace(os.Getenv("ROLEPLAY_GUILD_ID"))
 }
 
 func (c *Config) validate() error {

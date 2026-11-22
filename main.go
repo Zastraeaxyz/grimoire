@@ -146,6 +146,11 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 			return fmt.Errorf("ROLEPLAY_LOCKEE_ROLE_ID %q is not a valid Discord snowflake", rp.LockeeRoleID)
 		}
 	}
+	if rp.GuildID != "" {
+		if _, err := strconv.ParseUint(rp.GuildID, 10, 64); err != nil {
+			return fmt.Errorf("ROLEPLAY_GUILD_ID %q is not a valid Discord snowflake", rp.GuildID)
+		}
+	}
 	if cfg.OpenRouterAPIKey == "" {
 		return errors.New("OPENROUTER_API_KEY is required when DISCORD_ROLEPLAY_TOKEN is set")
 	}
@@ -206,7 +211,7 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 
 	b, err := bot.New(bot.Options{
 		Token:   rp.Token,
-		GuildID: cfg.GuildID,
+		GuildID: rp.GuildID,
 		Log:     log.With("bot", "roleplay"),
 		Intents: discordgo.IntentsGuilds |
 			discordgo.IntentsGuildMessages |
@@ -217,7 +222,7 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 	}
 
 	roleplay.New(roleplay.Options{
-		GuildID:         cfg.GuildID,
+		GuildID:         rp.GuildID,
 		BotName:         rp.BotName,
 		LockeeRoleID:    rp.LockeeRoleID,
 		SystemPrompt:    prompt,
