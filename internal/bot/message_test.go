@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,7 +70,7 @@ func TestAddMessageHandlerIgnoresNil(t *testing.T) {
 }
 
 func TestHandleMessageCreateRecoversPanics(t *testing.T) {
-	var buf strings.Builder
+	var buf lockedBuffer
 	b := &Bot{Log: slog.New(slog.NewTextHandler(&buf, nil))}
 	b.AddMessageHandler(func(context.Context, *discordgo.Session, *discordgo.MessageCreate) error {
 		panic("broken handler")
@@ -85,6 +86,23 @@ func TestHandleMessageCreateRecoversPanics(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("log = %q, want a panic entry", buf.String())
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *lockedBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(data)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func newTestBot() *Bot {
