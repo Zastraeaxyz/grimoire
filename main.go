@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,7 +21,9 @@ import (
 	"grimoire/internal/bot"
 	"grimoire/internal/chastisafe"
 	"grimoire/internal/config"
+	"grimoire/internal/cryptobox"
 	"grimoire/internal/features/bdsmlr"
+	memberlocks "grimoire/internal/features/chastisafe"
 	"grimoire/internal/features/rss"
 	"grimoire/internal/features/settings"
 	"grimoire/internal/features/stats"
@@ -117,6 +120,23 @@ func run() error {
 		UmamiURL:       cfg.UmamiURL,
 		UmamiWebsiteID: cfg.UmamiWebsiteID,
 		UmamiAPIKey:    cfg.UmamiAPIKey,
+	}).Register(b)
+
+	// The main bot stores one encrypted ChastiSafe code per member. The
+	// roleplay bot keeps using its single CHASTISAFE_KEYHOLDER_CODE.
+	box, boxErr := cryptobox.LoadOrCreate(
+		cfg.Chastisafe.StoreKey,
+		filepath.Join(filepath.Dir(cfg.DatabasePath), "chastisafe.key"),
+	)
+	if boxErr != nil {
+		log.Error("chastisafe credential store disabled", "err", boxErr)
+	}
+	memberlocks.New(memberlocks.Options{
+		Store:     st,
+		Box:       box,
+		BaseURL:   cfg.Chastisafe.BaseURL,
+		UserAgent: "grimoire-locks/1",
+		Logger:    log,
 	}).Register(b)
 
 	if cfg.Roleplay.Enabled() {

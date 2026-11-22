@@ -61,6 +61,15 @@ type Config struct {
 	// Roleplay is the optional second Discord bot. It stays offline when its
 	// token is empty.
 	Roleplay RoleplayConfig
+
+	// Chastisafe configures the main bot's per-member ChastiSafe login.
+	Chastisafe ChastisafeConfig
+}
+
+// ChastisafeConfig configures the main bot's member-scoped ChastiSafe access.
+type ChastisafeConfig struct {
+	BaseURL  string
+	StoreKey string
 }
 
 // RoleplayConfig configures the persona bot that runs next to Grimoire.
@@ -123,6 +132,10 @@ func Load() (*Config, error) {
 		OpenRouterModel:  envOr("OPENROUTER_MODEL", defaultOpenRouterModel),
 		OpenRouterBaseURL: envOr("OPENROUTER_BASE_URL",
 			"https://openrouter.ai/api/v1"),
+		Chastisafe: ChastisafeConfig{
+			BaseURL:  strings.TrimSpace(os.Getenv("CHASTISAFE_BASE_URL")),
+			StoreKey: strings.TrimSpace(os.Getenv("CHASTISAFE_STORE_KEY")),
+		},
 	}
 
 	roleplay, err := loadRoleplay()
