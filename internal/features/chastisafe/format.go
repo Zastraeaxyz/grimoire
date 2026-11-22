@@ -233,6 +233,154 @@ func lockTypeLabel(raw string, card, timer bool) string {
 	return value
 }
 
+// profileText renders a public ChastiSafe profile with both sides of the
+// account: what it does as a lockee and what it does as a keyholder.
+func profileText(profile *cs.Profile) string {
+	if profile == nil {
+		return "No ChastiSafe profile found."
+	}
+
+	name := strings.TrimSpace(profile.User)
+	if name == "" {
+		name = "Unknown account"
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "**%s** (ID `%s`)\n", name, profile.ID)
+	if profile.Visible {
+		b.WriteString("Public profile")
+	} else {
+		b.WriteString("Private profile")
+	}
+
+	b.WriteString("\n\n**Lockee stats**\n")
+	fmt.Fprintf(&b, "Locks: %s\n", countSummary(profile.SelfLockCounts))
+	fmt.Fprintf(&b, "Time: %s\n", durationSummary(profile.SelfStats))
+	fmt.Fprintf(&b, "Rating: %s\n", ratingSummary(
+		profile.Ratings.AverageRatingAsLockee,
+		profile.Ratings.RatingsAsLockeeCount,
+	))
+	if levels := levelSummary(profile.Levels); levels != "" {
+		fmt.Fprintf(&b, "Level: %s\n", levels)
+	}
+
+	b.WriteString("\n**Keyholder stats**\n")
+	fmt.Fprintf(&b, "Locks held: %s\n", countSummary(profile.KeyholderLockCounts))
+	fmt.Fprintf(&b, "Time: %s\n", durationSummary(profile.KeyholderStats))
+	fmt.Fprintf(&b, "Rating: %s\n", ratingSummary(
+		profile.Ratings.AverageRatingAsKeyholder,
+		profile.Ratings.RatingsAsKeyholderCount,
+	))
+
+	if locks := currentLockText(profile.LockInfo.ChastityLocks); locks != "" {
+		b.WriteString("\n**Current locks**\n")
+		b.WriteString(locks)
+	}
+	return b.String()
+}
+
+type statLabel struct {
+	key  string
+	noun string
+}
+
+var countStatLabels = []statLabel{
+	{key: "CHASTITY", noun: "chastity lock"},
+	{key: "BONDAGE", noun: "bondage lock"},
+	{key: "TASK", noun: "task lock"},
+	{key: "LOYALTY", noun: "loyalty lock"},
+	{key: "EMERGENCY", noun: "emergency lock"},
+}
+
+var durationStatLabels = []statLabel{
+	{key: "CHASTITY", noun: "chastity"},
+	{key: "CHASTITY-LONGEST", noun: "longest chastity"},
+	{key: "BONDAGE", noun: "bondage"},
+	{key: "TASK", noun: "task"},
+	{key: "LOYALTY", noun: "loyalty"},
+	{key: "EMERGENCY", noun: "emergency"},
+}
+
+func countSummary(stats cs.Stats) string {
+	parts := make([]string, 0, len(countStatLabels))
+	for _, label := range countStatLabels {
+		value := stats.Value(label.key)
+		if value <= 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%d %s%s", value, label.noun, pluralSuffix(value)))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func durationSummary(stats cs.Stats) string {
+	parts := make([]string, 0, len(durationStatLabels))
+	for _, label := range durationStatLabels {
+		value := stats.Value(label.key)
+		if value <= 0 {
+			continue
+		}
+		parts = append(parts, cs.FormatShortDuration(time.Duration(value)*time.Second)+" "+label.noun)
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func ratingSummary(average float64, count int) string {
+	if count <= 0 {
+		return "no ratings yet"
+	}
+	return fmt.Sprintf("%.1f / 5 from %d rating%s", average, count, pluralSuffix(count))
+}
+
+func levelSummary(levels cs.Levels) string {
+	parts := make([]string, 0, 3)
+	for _, level := range []struct {
+		label string
+		value string
+	}{
+		{label: "chastity", value: levels.ChastityLevel},
+		{label: "bondage", value: levels.BondageLevel},
+		{label: "task", value: levels.TaskLevel},
+	} {
+		value := strings.TrimSpace(level.value)
+		if value == "" {
+			continue
+		}
+		parts = append(parts, level.label+" "+value)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func currentLockText(entries []cs.LockInfoEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, entry := range entries {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		name := strings.TrimSpace(entry.LockName)
+		if name == "" {
+			name = "chastity lock"
+		}
+		fmt.Fprintf(&b, "• %s", name)
+		if keyholder := strings.TrimSpace(entry.Keyholder); keyholder != "" {
+			fmt.Fprintf(&b, ", held by %s", keyholder)
+		}
+		if !entry.LoadTime.IsZero() {
+			fmt.Fprintf(&b, " since <t:%d:R>", entry.LoadTime.Unix())
+		}
+	}
+	return b.String()
+}
+
 func pluralSuffix(count int) string {
 	if count == 1 {
 		return ""

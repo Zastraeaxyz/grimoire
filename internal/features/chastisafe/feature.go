@@ -31,6 +31,7 @@ var (
 // lockClient is the ChastiSafe surface the commands need.
 type lockClient interface {
 	Who(ctx context.Context) (*cs.Identity, error)
+	ProfileFor(ctx context.Context, user string) (*cs.Profile, error)
 	Loaded(ctx context.Context) ([]cs.LoadedLock, error)
 	Lockees(ctx context.Context) ([]cs.LoadedLock, error)
 	Templates(ctx context.Context) ([]cs.Template, error)
@@ -106,6 +107,7 @@ func (f *Feature) Register(b *bot.Bot) {
 	b.AddPublicCommand(logoutCommand(), f.handleLogoutCommand)
 	b.AddPublicCommand(lockeesCommand(), f.handleLockeesCommand)
 	b.AddPublicCommand(locksCommand(), f.handleLocksCommand)
+	b.AddPublicCommand(lookupCommand(), f.handleLookupCommand)
 	b.AddPublicCommand(chastityCommand(), f.handleChastityCommand)
 	b.AddModal(modalNamespace, f.handleLoginModal)
 }

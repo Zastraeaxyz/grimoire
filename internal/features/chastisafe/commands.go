@@ -42,6 +42,21 @@ func locksCommand() *discordgo.ApplicationCommand {
 	}
 }
 
+func lookupCommand() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name:        "lookup",
+		Description: "Look up a ChastiSafe profile by user ID or username#number",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "user",
+				Description: "ChastiSafe user ID or username#number",
+				Required:    true,
+			},
+		},
+	}
+}
+
 func chastityCommand() *discordgo.ApplicationCommand {
 	return &discordgo.ApplicationCommand{
 		Name:        "chastity",
@@ -193,6 +208,37 @@ func (f *Feature) handleLocksCommand(ctx context.Context, s *discordgo.Session, 
 	}
 
 	return sendEphemeralChunks(s, i, locksText(templates))
+}
+
+func (f *Feature) handleLookupCommand(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	userID := bot.InteractionUserID(i)
+	if userID == "" {
+		return bot.ReplyEphemeral(s, i, "I cannot tell who you are.")
+	}
+
+	option := i.ApplicationCommandData().GetOption("user")
+	if option == nil || strings.TrimSpace(option.StringValue()) == "" {
+		return bot.ReplyEphemeral(s, i, "Give me a ChastiSafe user ID or username#number.")
+	}
+	target := strings.TrimSpace(option.StringValue())
+
+	if err := bot.DeferEphemeral(s, i); err != nil {
+		return err
+	}
+
+	client, _, err := f.clientFor(ctx, userID)
+	if err != nil {
+		return bot.EditEphemeral(s, i, f.apiFailure(ctx, userID, err))
+	}
+	profile, err := client.ProfileFor(ctx, target)
+	if err != nil {
+		if errors.Is(err, cs.ErrProfileNotPublic) {
+			return bot.EditEphemeral(s, i, "That ChastiSafe profile is not public.")
+		}
+		return bot.EditEphemeral(s, i, f.apiFailure(ctx, userID, err))
+	}
+
+	return sendEphemeralChunks(s, i, profileText(profile))
 }
 
 func (f *Feature) handleChastityCommand(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {

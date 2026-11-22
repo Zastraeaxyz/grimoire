@@ -18,12 +18,14 @@ import (
 )
 
 type fakeClient struct {
-	identity  *cs.Identity
-	whoErr    error
-	loaded    []cs.LoadedLock
-	lockees   []cs.LoadedLock
-	templates []cs.Template
-	dataErr   error
+	identity   *cs.Identity
+	whoErr     error
+	profile    *cs.Profile
+	profileErr error
+	loaded     []cs.LoadedLock
+	lockees    []cs.LoadedLock
+	templates  []cs.Template
+	dataErr    error
 }
 
 func (f *fakeClient) Who(context.Context) (*cs.Identity, error) {
@@ -31,6 +33,13 @@ func (f *fakeClient) Who(context.Context) (*cs.Identity, error) {
 		return nil, f.whoErr
 	}
 	return f.identity, nil
+}
+
+func (f *fakeClient) ProfileFor(context.Context, string) (*cs.Profile, error) {
+	if f.profileErr != nil {
+		return nil, f.profileErr
+	}
+	return f.profile, nil
 }
 
 func (f *fakeClient) Loaded(context.Context) ([]cs.LoadedLock, error) {
@@ -219,6 +228,68 @@ func TestLockeesTextSortsByUrgency(t *testing.T) {
 	}
 	if !(cara < alice && alice < bob) {
 		t.Fatalf("lockees are not sorted by urgency: %s", text)
+	}
+}
+
+func TestProfileTextShowsBothSides(t *testing.T) {
+	profile := &cs.Profile{
+		User:    "testuser#0",
+		ID:      "123",
+		Visible: true,
+		SelfStats: cs.Stats{
+			"CHASTITY": 79,
+			"BONDAGE":  3600,
+		},
+		SelfLockCounts: cs.Stats{
+			"CHASTITY": 1,
+			"TASK":     2,
+		},
+		KeyholderStats: cs.Stats{
+			"CHASTITY": 86400,
+		},
+		KeyholderLockCounts: cs.Stats{
+			"CHASTITY": 5,
+		},
+		Ratings: cs.Ratings{
+			RatingsAsLockeeCount:     18,
+			AverageRatingAsLockee:    4.8,
+			RatingsAsKeyholderCount:  0,
+			AverageRatingAsKeyholder: 0,
+		},
+		Levels: cs.Levels{ChastityLevel: "Intermediate"},
+		LockInfo: cs.LockInfo{ChastityLocks: []cs.LockInfoEntry{
+			{
+				Keyholder: "keyholder#0",
+				LockName:  "Steel",
+				LoadTime:  cs.Time{Time: time.Date(2026, 11, 22, 10, 0, 0, 0, time.UTC)},
+			},
+		}},
+	}
+
+	text := profileText(profile)
+	for _, want := range []string{
+		"**testuser#0**",
+		"**Lockee stats**",
+		"**Keyholder stats**",
+		"1 chastity lock",
+		"2 task locks",
+		"1m 19s chastity",
+		"1h bondage",
+		"1d chastity",
+		"4.8 / 5 from 18 ratings",
+		"no ratings yet",
+		"Level: chastity Intermediate",
+		"Steel, held by keyholder#0",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("profile text missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestProfileTextEmpty(t *testing.T) {
+	if got := profileText(nil); got != "No ChastiSafe profile found." {
+		t.Fatalf("profileText(nil) = %q", got)
 	}
 }
 

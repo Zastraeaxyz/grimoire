@@ -44,9 +44,10 @@ Discord bot for the zxyz server, built on
   [Roleplay bot](#roleplay-bot).
 - **Member ChastiSafe access**: `/login` links a member's own ChastiSafe
   developer code to their Discord account. `/lockees` summarizes everyone they
-  hold keys for, `/locks` lists their templates by popularity, and
-  `/chastity status` shows their own locks. The roleplay bot keeps using its
-  single keyholder code and never reads these member codes.
+  hold keys for, `/locks` lists their templates by popularity, `/lookup` shows
+  another account's keyholder and lockee stats, and `/chastity status` shows
+  their own locks. The roleplay bot keeps using its single keyholder code and
+  never reads these member codes.
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -69,6 +70,7 @@ Discord bot for the zxyz server, built on
 - `/logout` - remove your saved ChastiSafe code
 - `/lockees` - list your ChastiSafe lockees and summarize their locks
 - `/locks` - list your lock templates sorted by lockee count
+- `/lookup user:<id|username#number>` - show another ChastiSafe profile's keyholder and lockee stats
 - `/chastity status` - show your own ChastiSafe locks (main bot)
 - `/chastity status` - show your ChastiSafe lock status (roleplay bot)
 - `/prompt` - show the persona system prompt (roleplay bot admins)
@@ -259,6 +261,7 @@ database, or every saved login becomes unreadable.
 | `/logout` | no | Deletes the caller's stored code |
 | `/lockees` | yes | Every active lockee with frozen, ready, timer, card, and check-in state |
 | `/locks` | yes | The caller's templates, sorted by lockee count |
+| `/lookup user:<id or username#number>` | yes | A public profile's lockee and keyholder stats, ratings, levels, and current locks |
 | `/chastity status` | yes | The caller's own active locks |
 
 `/locks` covers the logged-in account's templates. The ChastiSafe API has no
