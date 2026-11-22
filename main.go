@@ -16,6 +16,7 @@ import (
 	"grimoire/internal/features/bdsmlr"
 	"grimoire/internal/features/rss"
 	"grimoire/internal/features/settings"
+	"grimoire/internal/features/stats"
 	"grimoire/internal/features/welcome"
 	"grimoire/internal/store"
 )
@@ -98,6 +99,18 @@ func run() error {
 		Log:     log,
 	}).Register(b)
 
+	stats.New(ctx, stats.Options{
+		GuildID:        cfg.GuildID,
+		Store:          st,
+		Log:            log,
+		SiteURL:        cfg.StatsSiteURL,
+		Timezone:       cfg.StatsTimezone,
+		Times:          cfg.StatsTimes,
+		UmamiURL:       cfg.UmamiURL,
+		UmamiWebsiteID: cfg.UmamiWebsiteID,
+		UmamiAPIKey:    cfg.UmamiAPIKey,
+	}).Register(b)
+
 	health := newHealthServer(cfg.Port, log)
 	health.start()
 	defer health.shutdown()
@@ -111,7 +124,8 @@ func run() error {
 // seedSettings lets a fresh install boot with env configuration before an
 // admin runs /welcome setup. Existing database configuration always wins.
 func seedSettings(ctx context.Context, cfg *config.Config, st *store.Store, log *slog.Logger) error {
-	if cfg.WelcomeChannelID == "" || cfg.BaseRoleID == "" {
+	welcomeSeed := cfg.WelcomeChannelID != "" && cfg.BaseRoleID != ""
+	if !welcomeSeed && cfg.StatsChannelID == "" {
 		return nil
 	}
 
@@ -124,16 +138,20 @@ func seedSettings(ctx context.Context, cfg *config.Config, st *store.Store, log 
 	}
 
 	settings := &store.GuildSettings{
-		GuildID:          cfg.GuildID,
-		WelcomeChannelID: cfg.WelcomeChannelID,
-		BaseRoleID:       cfg.BaseRoleID,
+		GuildID:        cfg.GuildID,
+		StatsChannelID: cfg.StatsChannelID,
+	}
+	if welcomeSeed {
+		settings.WelcomeChannelID = cfg.WelcomeChannelID
+		settings.BaseRoleID = cfg.BaseRoleID
 	}
 	if err := st.SaveGuildSettings(ctx, settings); err != nil {
 		return err
 	}
-	log.Info("seeded welcome settings from environment",
-		"channel_id", cfg.WelcomeChannelID,
-		"role_id", cfg.BaseRoleID,
+	log.Info("seeded settings from environment",
+		"welcome_channel_id", settings.WelcomeChannelID,
+		"base_role_id", settings.BaseRoleID,
+		"stats_channel_id", settings.StatsChannelID,
 	)
 	return nil
 }

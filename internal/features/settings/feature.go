@@ -2,7 +2,6 @@ package settings
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -89,7 +88,7 @@ func (f *Feature) handleCommand(ctx context.Context, s *discordgo.Session, i *di
 
 	data := i.ApplicationCommandData()
 	if len(data.Options) == 0 {
-		return bot.ReplyEphemeral(s, i, "Use `/settings command-role`, `/settings bot-meta`, or `/settings status`.")
+		return bot.ReplyEphemeral(s, i, "Use `/settings command-role`, `/settings bot-meta`, `/settings stats`, or `/settings status`.")
 	}
 
 	if err := bot.DeferEphemeral(s, i); err != nil {
@@ -102,6 +101,8 @@ func (f *Feature) handleCommand(ctx context.Context, s *discordgo.Session, i *di
 		return f.commandRole(ctx, s, i, sub.Options)
 	case "bot-meta":
 		return f.botMeta(ctx, s, i, sub.Options)
+	case "stats":
+		return f.statsChannel(ctx, s, i, sub.Options)
 	case "status":
 		return f.status(ctx, s, i)
 	default:
@@ -155,7 +156,7 @@ func (f *Feature) botMeta(ctx context.Context, s *discordgo.Session, i *discordg
 	}
 
 	if channelID != "" {
-		if err := f.validateMetaChannel(s, channelID); err != nil {
+		if err := f.validateChannel(s, channelID, "build metadata"); err != nil {
 			return bot.EditEphemeral(s, i, err.Error())
 		}
 	}
@@ -186,6 +187,42 @@ func (f *Feature) botMeta(ctx context.Context, s *discordgo.Session, i *discordg
 	return bot.EditEphemeral(s, i, reply)
 }
 
+// statsChannel points the stats dashboard at a channel. Reports are posted and
+// edited there on the configured schedule.
+func (f *Feature) statsChannel(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, opts []*discordgo.ApplicationCommandInteractionDataOption) error {
+	channelID := ""
+	for _, opt := range opts {
+		if opt.Name != "channel" {
+			continue
+		}
+		ch := opt.ChannelValue(s)
+		if ch == nil {
+			return bot.EditEphemeral(s, i, "That channel no longer exists. Pick another one.")
+		}
+		channelID = ch.ID
+	}
+
+	if channelID != "" {
+		if err := f.validateChannel(s, channelID, "stats reports"); err != nil {
+			return bot.EditEphemeral(s, i, err.Error())
+		}
+	}
+	if err := f.store.SetStatsChannel(ctx, f.guildID, channelID); err != nil {
+		return fmt.Errorf("saving the stats channel: %w", err)
+	}
+
+	if channelID == "" {
+		f.log.Info("stats channel cleared")
+		return bot.EditEphemeral(s, i, "Stats reports are now off. `/stats post` still works on demand.")
+	}
+
+	f.log.Info("stats channel set", "channel_id", channelID)
+	return bot.EditEphemeral(s, i, fmt.Sprintf(
+		"Stats reports will be posted in <#%s>.\nUse `/stats post` to fill the dashboard now, or `/stats preview` to check the data first.",
+		channelID,
+	))
+}
+
 func (f *Feature) metadataEmbed() *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title: "Grimoire online",
@@ -205,15 +242,15 @@ func (f *Feature) metadataEmbed() *discordgo.MessageEmbed {
 	}
 }
 
-// validateMetaChannel checks that the bot can actually post its metadata in a
-// channel before saving it.
-func (f *Feature) validateMetaChannel(s *discordgo.Session, channelID string) error {
+// validateChannel checks that the bot can actually post in a channel before
+// saving it.
+func (f *Feature) validateChannel(s *discordgo.Session, channelID, purpose string) error {
 	ch, err := s.Channel(channelID)
 	if err != nil {
 		return fmt.Errorf("I cannot see <#%s>. Check my channel permissions.", channelID)
 	}
 	if ch.Type != discordgo.ChannelTypeGuildText && ch.Type != discordgo.ChannelTypeGuildNews {
-		return errors.New("Pick a text channel for build metadata.")
+		return fmt.Errorf("Pick a text channel for %s.", purpose)
 	}
 
 	perms, err := s.UserChannelPermissions(s.State.User.ID, channelID)
@@ -249,11 +286,17 @@ func (f *Feature) status(ctx context.Context, s *discordgo.Session, i *discordgo
 		meta = fmt.Sprintf("<#%s>", settings.BotMetaChannelID)
 	}
 
+	stats := "off"
+	if settings != nil && settings.StatsChannelID != "" {
+		stats = fmt.Sprintf("<#%s>", settings.StatsChannelID)
+	}
+
 	return bot.EditEphemeral(s, i, fmt.Sprintf(
 		"**Server settings**\n"+
 			"Member commands: %s\n"+
-			"Build metadata channel: %s",
-		role, meta,
+			"Build metadata channel: %s\n"+
+			"Stats channel: %s",
+		role, meta, stats,
 	))
 }
 
