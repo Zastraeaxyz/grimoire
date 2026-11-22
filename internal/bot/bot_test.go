@@ -49,6 +49,32 @@ func TestCanUseBot(t *testing.T) {
 	}
 }
 
+func TestComponentAndModalNamespaceLookup(t *testing.T) {
+	b := &Bot{
+		Log:               slog.New(slog.NewTextHandler(io.Discard, nil)),
+		componentHandlers: make(map[string]ComponentHandler),
+		modalHandlers:     make(map[string]ModalHandler),
+	}
+
+	component := func(context.Context, *discordgo.Session, *discordgo.InteractionCreate) error { return nil }
+	modal := func(context.Context, *discordgo.Session, *discordgo.InteractionCreate) error { return nil }
+	b.AddComponent("welcome", component)
+	b.AddModal("chastisafe", modal)
+
+	if got := b.componentHandler("welcome:ack"); got == nil {
+		t.Fatal("componentHandler did not resolve a namespace")
+	}
+	if got := b.componentHandler("other:ack"); got != nil {
+		t.Fatal("componentHandler resolved an unknown namespace")
+	}
+	if got := b.modalHandler("chastisafe:login"); got == nil {
+		t.Fatal("modalHandler did not resolve a namespace")
+	}
+	if got := b.modalHandler("other:login"); got != nil {
+		t.Fatal("modalHandler resolved an unknown namespace")
+	}
+}
+
 func TestCommandDenial(t *testing.T) {
 	newBot := func(lookup UserRoleLookup) *Bot {
 		return &Bot{

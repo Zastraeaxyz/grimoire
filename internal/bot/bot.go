@@ -31,6 +31,10 @@ type CommandHandler func(ctx context.Context, s *discordgo.Session, i *discordgo
 // ComponentHandler runs a message component interaction (buttons, selects).
 type ComponentHandler func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error
 
+// ModalHandler runs a modal submission. The custom ID namespace works the same
+// way as AddComponent.
+type ModalHandler func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error
+
 // AutocompleteHandler answers suggestions for a slash command option.
 type AutocompleteHandler func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error
 
@@ -60,6 +64,7 @@ type Bot struct {
 	userRole          UserRoleLookup
 	autocompletes     map[string]AutocompleteHandler
 	componentHandlers map[string]ComponentHandler
+	modalHandlers     map[string]ModalHandler
 	messageHandlers   []MessageHandler
 	readyHooks        []ReadyHook
 	commandsSynced    bool
@@ -97,6 +102,7 @@ func New(opts Options) (*Bot, error) {
 		publicCommands:    make(map[string]struct{}),
 		autocompletes:     make(map[string]AutocompleteHandler),
 		componentHandlers: make(map[string]ComponentHandler),
+		modalHandlers:     make(map[string]ModalHandler),
 	}
 	s.AddHandler(b.handleReady)
 	s.AddHandler(b.handleInteraction)
@@ -145,6 +151,14 @@ func (b *Bot) AddComponent(namespace string, handler ComponentHandler) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.componentHandlers[namespace] = handler
+}
+
+// AddModal registers a modal handler for a custom ID namespace, for example
+// "chastisafe" handles "chastisafe:login".
+func (b *Bot) AddModal(namespace string, handler ModalHandler) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.modalHandlers[namespace] = handler
 }
 
 // AddAutocomplete registers suggestions for a command's options.
@@ -413,7 +427,8 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 	if i.Type != discordgo.InteractionPing &&
 		i.Type != discordgo.InteractionApplicationCommand &&
 		i.Type != discordgo.InteractionApplicationCommandAutocomplete &&
-		i.Type != discordgo.InteractionMessageComponent {
+		i.Type != discordgo.InteractionMessageComponent &&
+		i.Type != discordgo.InteractionModalSubmit {
 		return
 	}
 
@@ -485,14 +500,7 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 
 	case discordgo.InteractionMessageComponent:
 		customID := i.MessageComponentData().CustomID
-		b.mu.RLock()
-		handler := b.componentHandlers[customID]
-		if handler == nil {
-			if idx := strings.Index(customID, ":"); idx > 0 {
-				handler = b.componentHandlers[customID[:idx]]
-			}
-		}
-		b.mu.RUnlock()
+		handler := b.componentHandler(customID)
 		if handler == nil {
 			b.Log.Warn("unhandled component", "custom_id", customID)
 			return
@@ -500,7 +508,44 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 		if err := handler(ctx, s, i); err != nil {
 			b.handleError(s, i, err)
 		}
+
+	case discordgo.InteractionModalSubmit:
+		customID := i.ModalSubmitData().CustomID
+		handler := b.modalHandler(customID)
+		if handler == nil {
+			b.Log.Warn("unhandled modal", "custom_id", customID)
+			return
+		}
+		if err := handler(ctx, s, i); err != nil {
+			b.handleError(s, i, err)
+		}
 	}
+}
+
+// componentHandler finds a component handler by full custom ID or namespace.
+func (b *Bot) componentHandler(customID string) ComponentHandler {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if handler := b.componentHandlers[customID]; handler != nil {
+		return handler
+	}
+	if idx := strings.Index(customID, ":"); idx > 0 {
+		return b.componentHandlers[customID[:idx]]
+	}
+	return nil
+}
+
+// modalHandler finds a modal handler by full custom ID or namespace.
+func (b *Bot) modalHandler(customID string) ModalHandler {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if handler := b.modalHandlers[customID]; handler != nil {
+		return handler
+	}
+	if idx := strings.Index(customID, ":"); idx > 0 {
+		return b.modalHandlers[customID[:idx]]
+	}
+	return nil
 }
 
 func (b *Bot) handleError(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
