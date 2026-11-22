@@ -114,7 +114,7 @@ func TestCollectReadsEveryWindow(t *testing.T) {
 	var (
 		mu          sync.Mutex
 		statsStarts []string
-		pathCalls   int
+		pathStarts  []string
 	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -128,7 +128,7 @@ func TestCollectReadsEveryWindow(t *testing.T) {
 				t.Errorf("unexpected metrics type %q", dimension)
 			}
 			mu.Lock()
-			pathCalls++
+			pathStarts = append(pathStarts, r.URL.Query().Get("startAt"))
 			mu.Unlock()
 			_, _ = io.WriteString(w, `[{"x":"/zastraeachastity","y":60},{"x":"/home","y":20},{"x":"/zastraeachastity/archive","y":5}]`)
 		default:
@@ -167,8 +167,12 @@ func TestCollectReadsEveryWindow(t *testing.T) {
 			t.Errorf("unexpected stats window start %s", start)
 		}
 	}
-	if pathCalls != 1 {
-		t.Errorf("path metric calls = %d, want 1", pathCalls)
+	if len(pathStarts) != 1 {
+		t.Fatalf("path metric calls = %d, want 1", len(pathStarts))
+	}
+	wantPathStart := strconv.FormatInt(time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC).UnixMilli(), 10)
+	if pathStarts[0] != wantPathStart {
+		t.Errorf("path window start = %s, want %s", pathStarts[0], wantPathStart)
 	}
 
 	if len(rep.topBlogs) != 1 || rep.topBlogs[0].X != "zastraeachastity" || rep.topBlogs[0].Y != 65 {

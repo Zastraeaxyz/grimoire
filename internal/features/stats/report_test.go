@@ -116,6 +116,9 @@ func TestBuildEmbeds(t *testing.T) {
 	if !strings.Contains(values, "[Dogtanian69](https://bdsmlr.zastraea.xyz/Dogtanian69) · 33") {
 		t.Errorf("missing second blog: %q", values)
 	}
+	if !strings.Contains(values, "Top blogs (last 7 days)") {
+		t.Errorf("missing the 7 day blog window: %q", values)
+	}
 }
 
 func TestBuildEmbedsWithNoData(t *testing.T) {

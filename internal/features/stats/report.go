@@ -46,7 +46,6 @@ func (f *Feature) collect(ctx context.Context, now time.Time) (*report, error) {
 	dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 	yesterdayStart := dayStart.AddDate(0, 0, -1)
 	weekStart := dayStart.AddDate(0, 0, -6)
-	rankStart := now.Add(-24 * time.Hour)
 
 	rep := &report{now: now, loc: loc}
 
@@ -82,7 +81,7 @@ func (f *Feature) collect(ctx context.Context, now time.Time) (*report, error) {
 		return err
 	})
 	run(func() error {
-		paths, err := f.umami.metrics(ctx, "path", rankStart, now, metricsLimit)
+		paths, err := f.umami.metrics(ctx, "path", weekStart, now, metricsLimit)
 		if err != nil {
 			return err
 		}
@@ -237,7 +236,7 @@ func buildEmbeds(rep *report, siteURL string) []*discordgo.MessageEmbed {
 					Inline: true,
 				},
 				{
-					Name:  "Top blogs (last 24 hours)",
+					Name:  "Top blogs (last 7 days)",
 					Value: metricField(rep.topBlogs, rankedLimit, func(row Metric) string { return blogLine(row, siteURL) }),
 				},
 			},
