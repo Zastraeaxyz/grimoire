@@ -36,7 +36,7 @@ Discord bot for the zxyz server, built on
   channel where it keeps a bbdsmlr analytics dashboard. The dashboard is
   edited in place twice a day, or on demand with `/stats post`. It shows
   visitors and pageviews for today, yesterday, and the last week, plus the
-  most visited blogs from the last 24 hours. See
+  most visited blogs from the last 7 days. See
   [Stats reports](#stats-reports).
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
@@ -179,7 +179,7 @@ dashboard is reposted on the next run.
 
 The report covers today so far, yesterday with its change against the day
 before, the last seven days, yesterday's average visit and bounce rate, and
-the five most visited blogs of the last 24 hours as links to
+the five most visited blogs of the last 7 days as links to
 `bdsmlr.zastraea.xyz/<blog>`. It deliberately leaves out app internals and
 visitor breakdowns, so the channel stays useful to people who do not work on
 the site.
