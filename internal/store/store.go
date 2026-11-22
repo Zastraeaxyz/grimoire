@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 // Store is the SQLite-backed persistence layer.
 type Store struct {
@@ -31,6 +31,8 @@ type GuildSettings struct {
 	PanelBody         string
 	UserCommandRoleID string
 	BotMetaChannelID  string
+	StatsChannelID    string
+	StatsMessageID    string
 	UpdatedAt         time.Time
 }
 
@@ -180,6 +182,13 @@ func migrate(ctx context.Context, db *sql.DB) error {
 				`ALTER TABLE guild_settings ADD COLUMN bot_meta_channel_id TEXT NOT NULL DEFAULT ''`,
 			},
 		},
+		{
+			version: 7,
+			statements: []string{
+				`ALTER TABLE guild_settings ADD COLUMN stats_channel_id TEXT NOT NULL DEFAULT ''`,
+				`ALTER TABLE guild_settings ADD COLUMN stats_message_id TEXT NOT NULL DEFAULT ''`,
+			},
+		},
 	}
 
 	for _, step := range steps {
@@ -211,7 +220,8 @@ func (s *Store) GetGuildSettings(ctx context.Context, guildID string) (*GuildSet
 	row := s.db.QueryRowContext(ctx, `
 		SELECT guild_id, welcome_channel_id, base_role_id, rules_channel_id,
 		       panel_message_id, panel_body, user_command_role_id,
-		       bot_meta_channel_id, updated_at
+		       bot_meta_channel_id, stats_channel_id, stats_message_id,
+		       updated_at
 		FROM guild_settings
 		WHERE guild_id = ?`, guildID)
 
@@ -228,6 +238,8 @@ func (s *Store) GetGuildSettings(ctx context.Context, guildID string) (*GuildSet
 		&st.PanelBody,
 		&st.UserCommandRoleID,
 		&st.BotMetaChannelID,
+		&st.StatsChannelID,
+		&st.StatsMessageID,
 		&updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -246,8 +258,9 @@ func (s *Store) SaveGuildSettings(ctx context.Context, st *GuildSettings) error 
 		INSERT INTO guild_settings (
 			guild_id, welcome_channel_id, base_role_id, rules_channel_id,
 			panel_message_id, panel_body, user_command_role_id,
-			bot_meta_channel_id, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
+			bot_meta_channel_id, stats_channel_id, stats_message_id,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
 		ON CONFLICT(guild_id) DO UPDATE SET
 			welcome_channel_id = excluded.welcome_channel_id,
 			base_role_id = excluded.base_role_id,
@@ -256,6 +269,8 @@ func (s *Store) SaveGuildSettings(ctx context.Context, st *GuildSettings) error 
 			panel_body = excluded.panel_body,
 			user_command_role_id = excluded.user_command_role_id,
 			bot_meta_channel_id = excluded.bot_meta_channel_id,
+			stats_channel_id = excluded.stats_channel_id,
+			stats_message_id = excluded.stats_message_id,
 			updated_at = unixepoch()`,
 		st.GuildID,
 		st.WelcomeChannelID,
@@ -265,6 +280,8 @@ func (s *Store) SaveGuildSettings(ctx context.Context, st *GuildSettings) error 
 		st.PanelBody,
 		st.UserCommandRoleID,
 		st.BotMetaChannelID,
+		st.StatsChannelID,
+		st.StatsMessageID,
 	)
 	return err
 }
@@ -297,7 +314,37 @@ func (s *Store) SetBotMetaChannel(ctx context.Context, guildID, channelID string
 	return err
 }
 
-// SetPanelMessage records the message ID of the live welcome panel.
+// SetStatsChannel records where the stats dashboard lives. An empty channel
+// turns reports off. Changing the channel discards the tracked dashboard
+// message, since a message ID is only meaningful in its own channel.
+func (s *Store) SetStatsChannel(ctx context.Context, guildID, channelID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO guild_settings (guild_id, stats_channel_id, updated_at)
+		VALUES (?, ?, unixepoch())
+		ON CONFLICT(guild_id) DO UPDATE SET
+			stats_message_id = CASE
+				WHEN guild_settings.stats_channel_id = excluded.stats_channel_id
+				THEN guild_settings.stats_message_id
+				ELSE ''
+			END,
+			stats_channel_id = excluded.stats_channel_id,
+			updated_at = unixepoch()`,
+		guildID, channelID)
+	return err
+}
+
+// SetStatsMessage records the dashboard message that future reports edit.
+// Reports for a stale channel are ignored, so a racing update cannot point the
+// dashboard at a removed message.
+func (s *Store) SetStatsMessage(ctx context.Context, guildID, channelID, messageID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE guild_settings
+		SET stats_message_id = ?, updated_at = unixepoch()
+		WHERE guild_id = ? AND stats_channel_id = ?`,
+		messageID, guildID, channelID)
+	return err
+}
+
 func (s *Store) SetPanelMessage(ctx context.Context, guildID, messageID string) error {
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE guild_settings

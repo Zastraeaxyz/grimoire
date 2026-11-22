@@ -50,6 +50,70 @@ func TestSetBotMetaChannel(t *testing.T) {
 	}
 }
 
+func TestSetStatsChannel(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	// The upsert must work before any other settings row exists.
+	if err := st.SetStatsChannel(ctx, "guild-1", "stats-1"); err != nil {
+		t.Fatalf("SetStatsChannel: %v", err)
+	}
+	settings, err := st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings: %v", err)
+	}
+	if settings == nil || settings.StatsChannelID != "stats-1" {
+		t.Fatalf("StatsChannelID = %+v", settings)
+	}
+
+	if err := st.SetStatsMessage(ctx, "guild-1", "stats-1", "message-1"); err != nil {
+		t.Fatalf("SetStatsMessage: %v", err)
+	}
+	settings, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings: %v", err)
+	}
+	if settings.StatsMessageID != "message-1" {
+		t.Fatalf("StatsMessageID = %q, want message-1", settings.StatsMessageID)
+	}
+
+	// Saving the same channel keeps the dashboard message.
+	if err := st.SetStatsChannel(ctx, "guild-1", "stats-1"); err != nil {
+		t.Fatalf("SetStatsChannel(same): %v", err)
+	}
+	settings, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings: %v", err)
+	}
+	if settings.StatsMessageID != "message-1" {
+		t.Fatalf("StatsMessageID = %q, want it kept", settings.StatsMessageID)
+	}
+
+	// Moving the dashboard drops a message ID that belongs to the old channel.
+	if err := st.SetStatsChannel(ctx, "guild-1", "stats-2"); err != nil {
+		t.Fatalf("SetStatsChannel(move): %v", err)
+	}
+	settings, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings: %v", err)
+	}
+	if settings.StatsChannelID != "stats-2" || settings.StatsMessageID != "" {
+		t.Fatalf("settings after move = %+v", settings)
+	}
+
+	// A message saved for a stale channel is ignored.
+	if err := st.SetStatsMessage(ctx, "guild-1", "stats-1", "stale"); err != nil {
+		t.Fatalf("SetStatsMessage(stale): %v", err)
+	}
+	settings, err = st.GetGuildSettings(ctx, "guild-1")
+	if err != nil {
+		t.Fatalf("GetGuildSettings: %v", err)
+	}
+	if settings.StatsMessageID != "" {
+		t.Fatalf("StatsMessageID = %q, want empty", settings.StatsMessageID)
+	}
+}
+
 func TestGetGuildSettingsMissing(t *testing.T) {
 	st := newTestStore(t)
 	settings, err := st.GetGuildSettings(context.Background(), "123")
@@ -73,6 +137,8 @@ func TestSaveAndLoadSettings(t *testing.T) {
 		PanelBody:         "custom body",
 		UserCommandRoleID: "command-role-1",
 		BotMetaChannelID:  "meta-1",
+		StatsChannelID:    "stats-1",
+		StatsMessageID:    "stats-message-1",
 	}
 	if err := st.SaveGuildSettings(ctx, want); err != nil {
 		t.Fatalf("SaveGuildSettings: %v", err)
@@ -90,7 +156,9 @@ func TestSaveAndLoadSettings(t *testing.T) {
 		got.RulesChannelID != want.RulesChannelID ||
 		got.PanelBody != want.PanelBody ||
 		got.UserCommandRoleID != want.UserCommandRoleID ||
-		got.BotMetaChannelID != want.BotMetaChannelID {
+		got.BotMetaChannelID != want.BotMetaChannelID ||
+		got.StatsChannelID != want.StatsChannelID ||
+		got.StatsMessageID != want.StatsMessageID {
 		t.Fatalf("settings mismatch: got %+v want %+v", got, want)
 	}
 	if time.Since(got.UpdatedAt) > time.Minute {

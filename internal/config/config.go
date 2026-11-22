@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -34,10 +35,22 @@ type Config struct {
 	// a signed-in account.bdsmlr.com session.
 	BDSMLRSession string
 
+	// Umami analytics for the stats reports. The feature is disabled unless
+	// the URL, website ID, and API key are all set.
+	UmamiURL       string
+	UmamiWebsiteID string
+	UmamiAPIKey    string
+
+	// Stats report formatting and schedule.
+	StatsSiteURL  string
+	StatsTimezone string
+	StatsTimes    []string
+
 	// Optional seed values for the first boot. Once configured through
 	// /welcome setup the database is the source of truth.
 	WelcomeChannelID string
 	BaseRoleID       string
+	StatsChannelID   string
 }
 
 // Load reads configuration from .env (when present) and the environment.
@@ -56,6 +69,12 @@ func Load() (*Config, error) {
 		RedditSession:    strings.TrimSpace(os.Getenv("REDDIT_SESSION")),
 		RedditUserAgent:  strings.TrimSpace(os.Getenv("REDDIT_USER_AGENT")),
 		BDSMLRSession:    strings.TrimSpace(os.Getenv("BDSMLR_SESSION")),
+		UmamiURL:         strings.TrimSpace(os.Getenv("UMAMI_URL")),
+		UmamiWebsiteID:   strings.TrimSpace(os.Getenv("UMAMI_WEBSITE_ID")),
+		UmamiAPIKey:      strings.TrimSpace(os.Getenv("UMAMI_API_KEY")),
+		StatsSiteURL:     envOr("STATS_SITE_URL", "https://bdsmlr.zastraea.xyz"),
+		StatsTimezone:    envOr("STATS_TIMEZONE", "UTC"),
+		StatsChannelID:   strings.TrimSpace(os.Getenv("STATS_CHANNEL_ID")),
 	}
 
 	interval, err := time.ParseDuration(envOr("RSS_POLL_INTERVAL", "1h"))
@@ -76,11 +95,19 @@ func Load() (*Config, error) {
 	}
 	cfg.RedditIncludeNSFW = includeNSFW
 
+	times, err := parseStatsTimes(envOr("STATS_TIMES", defaultStatsTimes))
+	if err != nil {
+		return nil, err
+	}
+	cfg.StatsTimes = times
+
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
 	return cfg, nil
 }
+
+const defaultStatsTimes = "09:00,21:00"
 
 func (c *Config) validate() error {
 	if c.Token == "" {
@@ -104,7 +131,28 @@ func (c *Config) validate() error {
 	if c.RSSMaxAttachmentBytes < 1<<20 {
 		return errors.New("RSS_MAX_ATTACHMENT_BYTES must be at least 1048576")
 	}
+	if err := c.validateUmami(); err != nil {
+		return err
+	}
+	if _, err := time.LoadLocation(c.StatsTimezone); err != nil {
+		return fmt.Errorf("STATS_TIMEZONE %q is not a time zone: %w", c.StatsTimezone, err)
+	}
 	return nil
+}
+
+// validateUmami keeps a half-configured analytics client from starting, since
+// every request would fail with a 401 at report time.
+func (c *Config) validateUmami() error {
+	set := 0
+	for _, value := range []string{c.UmamiURL, c.UmamiWebsiteID, c.UmamiAPIKey} {
+		if value != "" {
+			set++
+		}
+	}
+	if set == 0 || set == 3 {
+		return nil
+	}
+	return errors.New("UMAMI_URL, UMAMI_WEBSITE_ID and UMAMI_API_KEY must be set together, or all left empty")
 }
 
 func envOr(key, fallback string) string {
@@ -156,6 +204,42 @@ func parseBytes(raw string) (int64, error) {
 		return 0, fmt.Errorf("%q is not a positive byte count", raw)
 	}
 	return n * multiplier, nil
+}
+
+// parseStatsTimes accepts "09:00,21:00" and returns the de-duplicated times in
+// chronological order. "off" turns scheduled reports off, leaving /stats post.
+func parseStatsTimes(raw string) ([]string, error) {
+	value := strings.TrimSpace(raw)
+	if strings.EqualFold(value, "off") {
+		return nil, nil
+	}
+	if value == "" {
+		return nil, errors.New("STATS_TIMES must be a comma-separated list of HH:MM times, or \"off\"")
+	}
+
+	seen := make(map[string]struct{})
+	times := make([]string, 0, 2)
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		parsed, err := time.Parse("15:04", part)
+		if err != nil {
+			return nil, fmt.Errorf("STATS_TIMES value %q is not HH:MM", part)
+		}
+		normalized := parsed.Format("15:04")
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		times = append(times, normalized)
+	}
+	if len(times) == 0 {
+		return nil, errors.New("STATS_TIMES has no times")
+	}
+	sort.Strings(times)
+	return times, nil
 }
 
 func parseLevel(raw string) slog.Level {
