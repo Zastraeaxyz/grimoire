@@ -13,9 +13,10 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
   members with that role.
 - Can check the caller's ChastiSafe lock status with a tool, only when locks or
   chastity are already part of the conversation.
+- Can add time as a punishment and freeze or thaw a timed lock.
 - Exposes `/chastity status` so a member can check their own lock privately.
 - Exposes `/prompt` to admins so the persona can be reviewed and tuned.
-- Uses no memory and cannot change a lock yet.
+- Uses no memory yet.
 
 ## Setup
 
@@ -57,13 +58,14 @@ never touch ChastiSafe.
 ChastiSafe does not let a keyholder attach a lockee through its API. The lockee
 starts the relationship:
 
-1. Create at least one lock template in the persona's ChastiSafe account so a
-   lockee has something to load. The bot does not create templates.
+1. Create at least one timed lock template in the persona's ChastiSafe account
+   so a lockee has something to load. Enable updates on it so punishments can
+   add time. The bot does not create templates.
 2. The member runs `/chastity status`.
 3. With no active lock, the bot replies with its keyholder name, ChastiSafe ID,
    and the templates it offers.
 4. The member adds that account as their keyholder in the ChastiSafe app and
-   loads a lock.
+   loads a timed lock.
 5. The bot sees the lock the next time the member talks to it.
 
 Recognition uses the Discord ID linked to the ChastiSafe account, so there is
@@ -80,12 +82,26 @@ no separate allowlist to maintain.
 Admins can run `/chastity status` because slash command permissions always allow
 server admins.
 
+## Punishment
+
+Raven has house rules in her prompt, starting with the rule that no sub may
+change his mind without her permission. When a rule breaks, she can call
+`chastity_punish`, which adds time to the sub's timed lock.
+
+The amount is 5% of the remaining time, clamped to 30 minutes at the low end and
+4 hours at the high end. A two hour lock takes a 30 minute hit. A two day lock
+takes about 2 hours 24 minutes. Tune it with the variables below.
+
+Raven can also freeze or thaw a timed lock. She cannot unlock a lock, create
+one, or change a card lock.
+
 ## Limits
 
-This version is intentionally read-only.
+This version only touches timed locks, and only through three tools.
 
-- It cannot lock, unlock, freeze, add time, remove cards, create a lock, assign
-  a task, or start a pillory.
+- It can read status, add time, and freeze or thaw a timed lock.
+- It cannot unlock, remove cards, create a lock, assign a task, or start a
+  pillory.
 - The system prompt tells the persona this explicitly, so it does not pretend
   to have controls it lacks.
 - Lock combinations and unlock codes are never placed in the prompt, the reply,
@@ -113,7 +129,10 @@ This version is intentionally read-only.
 | `ROLEPLAY_MAX_CONCURRENT` | `2` | Concurrent model calls |
 | `ROLEPLAY_RATE_LIMIT_CAPACITY` | `2` | Requests per member per window |
 | `ROLEPLAY_RATE_LIMIT_SECONDS` | `10` | Window length |
-| `ROLEPLAY_CHASTITY_ENABLED` | `true` | Read-only ChastiSafe status |
+| `ROLEPLAY_PUNISH_PERCENT` | `5` | Percent of remaining time added per punishment |
+| `ROLEPLAY_PUNISH_MIN_MINUTES` | `30` | Smallest punishment |
+| `ROLEPLAY_PUNISH_MAX_MINUTES` | `240` | Largest punishment |
+| `ROLEPLAY_CHASTITY_ENABLED` | `true` | ChastiSafe status and keyholder tools |
 | `CHASTISAFE_KEYHOLDER_CODE` | | ChastiSafe keyholder developer code |
 | `CHASTISAFE_BASE_URL` | `https://chastisafe.com/api-v1` | API root override |
 

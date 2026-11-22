@@ -239,6 +239,7 @@ commands, system prompt, intents, and rate limits, and it stays offline when
   it to one role.
 - It can check ChastiSafe lock status as a tool when the conversation calls
   for it. Status is not injected into every reply.
+- It can add time as a punishment and freeze or thaw a timed lock.
 - Exposes `/prompt` to admins so the persona can be reviewed and tuned.
 - It has no memory and no ability to change a lock yet.
 - An incomplete roleplay configuration logs an error and leaves Grimoire running.
@@ -282,6 +283,9 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `ROLEPLAY_MAX_CONCURRENT` | no | `2` | Concurrent model calls |
 | `ROLEPLAY_RATE_LIMIT_CAPACITY` | no | `2` | Requests per member per window |
 | `ROLEPLAY_RATE_LIMIT_SECONDS` | no | `10` | Rate limit window |
+| `ROLEPLAY_PUNISH_PERCENT` | no | `5` | Percent of remaining time added per punishment |
+| `ROLEPLAY_PUNISH_MIN_MINUTES` | no | `30` | Smallest punishment |
+| `ROLEPLAY_PUNISH_MAX_MINUTES` | no | `240` | Largest punishment |
 | `OPENROUTER_API_KEY` | with roleplay | | OpenRouter key |
 | `OPENROUTER_MODEL` | no | `deepseek/deepseek-v4.1-flash-1017` | Model slug |
 | `OPENROUTER_BASE_URL` | no | `https://openrouter.ai/api/v1` | API root |
