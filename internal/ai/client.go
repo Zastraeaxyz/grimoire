@@ -24,8 +24,10 @@ const (
 
 // Message is one chat turn in an OpenAI-compatible request.
 type Message struct {
-	Role    string
-	Content string
+	Role       string
+	Content    string
+	ToolCalls  []ToolCall
+	ToolCallID string
 }
 
 // Usage reports token usage for a request.
@@ -37,8 +39,35 @@ type Usage struct {
 
 // Reply is a completed chat request.
 type Reply struct {
-	Text  string
-	Usage Usage
+	Text      string
+	Usage     Usage
+	ToolCalls []ToolCall
+}
+
+// Tool describes a function the model may call.
+type Tool struct {
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
+}
+
+// ToolFunction is the callable part of a Tool.
+type ToolFunction struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+}
+
+// ToolCall is a function call requested by the model.
+type ToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"`
+	Function ToolCallFunction `json:"function"`
+}
+
+// ToolCallFunction holds the name and JSON arguments of a tool call.
+type ToolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 // Options configures a Client.
@@ -125,20 +154,24 @@ func (c *Client) Model() string {
 }
 
 type requestMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 type chatRequest struct {
 	Model     string           `json:"model"`
 	Messages  []requestMessage `json:"messages"`
+	Tools     []Tool           `json:"tools,omitempty"`
 	MaxTokens int              `json:"max_tokens,omitempty"`
 }
 
 type chatResponse struct {
 	Choices []struct {
 		Message struct {
-			Content string `json:"content"`
+			Content   string     `json:"content"`
+			ToolCalls []ToolCall `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage Usage `json:"usage"`
@@ -150,6 +183,13 @@ type chatResponse struct {
 // Chat sends a system prompt and conversation to the model. An empty system
 // prompt is allowed.
 func (c *Client) Chat(ctx context.Context, system string, messages []Message) (Reply, error) {
+	return c.ChatWithTools(ctx, system, messages, nil)
+}
+
+// ChatWithTools is Chat with optional function tools. The model may answer
+// with tool calls instead of text; the caller runs them and sends the results
+// back as a tool message.
+func (c *Client) ChatWithTools(ctx context.Context, system string, messages []Message, tools []Tool) (Reply, error) {
 	if c == nil || c.http == nil {
 		return Reply{}, errors.New("ai: client is disabled")
 	}
@@ -164,10 +204,18 @@ func (c *Client) Chat(ctx context.Context, system string, messages []Message) (R
 	for _, message := range messages {
 		role := strings.TrimSpace(message.Role)
 		content := strings.TrimSpace(message.Content)
-		if role == "" || content == "" {
+		if role == "" {
 			continue
 		}
-		wire = append(wire, requestMessage{Role: role, Content: content})
+		if content == "" && len(message.ToolCalls) == 0 && message.ToolCallID == "" {
+			continue
+		}
+		wire = append(wire, requestMessage{
+			Role:       role,
+			Content:    content,
+			ToolCalls:  message.ToolCalls,
+			ToolCallID: message.ToolCallID,
+		})
 	}
 	if len(wire) == 0 {
 		return Reply{}, errors.New("ai: no messages to send")
@@ -176,6 +224,7 @@ func (c *Client) Chat(ctx context.Context, system string, messages []Message) (R
 	body, err := json.Marshal(chatRequest{
 		Model:     c.model,
 		Messages:  wire,
+		Tools:     tools,
 		MaxTokens: c.maxTokens,
 	})
 	if err != nil {
@@ -222,10 +271,11 @@ func (c *Client) Chat(ctx context.Context, system string, messages []Message) (R
 	}
 
 	text := strings.TrimSpace(decoded.Choices[0].Message.Content)
-	if text == "" {
+	toolCalls := decoded.Choices[0].Message.ToolCalls
+	if text == "" && len(toolCalls) == 0 {
 		return Reply{}, errors.New("ai: model returned an empty reply")
 	}
-	return Reply{Text: text, Usage: decoded.Usage}, nil
+	return Reply{Text: text, Usage: decoded.Usage, ToolCalls: toolCalls}, nil
 }
 
 func summarizeError(data []byte) string {

@@ -74,6 +74,105 @@ func TestChatSendsSystemAndMessages(t *testing.T) {
 	}
 }
 
+func TestChatWithTools(t *testing.T) {
+	var got map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatalf("decoding body: %v", err)
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"chastity_status","arguments":"{}"}}]}}]}`)
+	}))
+	defer server.Close()
+
+	client, err := New(Options{APIKey: "k", BaseURL: server.URL, Model: "m"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	reply, err := client.ChatWithTools(context.Background(), "sys", []Message{
+		{Role: "user", Content: "am I locked?"},
+	}, []Tool{{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "chastity_status",
+			Description: "Read the caller's lock status.",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		},
+	}})
+	if err != nil {
+		t.Fatalf("ChatWithTools: %v", err)
+	}
+	if reply.Text != "" {
+		t.Fatalf("text = %q", reply.Text)
+	}
+	if len(reply.ToolCalls) != 1 || reply.ToolCalls[0].Function.Name != "chastity_status" {
+		t.Fatalf("tool calls = %+v", reply.ToolCalls)
+	}
+
+	tools, ok := got["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools = %#v", got["tools"])
+	}
+	tool := tools[0].(map[string]any)
+	if tool["type"] != "function" {
+		t.Fatalf("tool = %#v", tool)
+	}
+}
+
+func TestChatSendsToolResults(t *testing.T) {
+	var got map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatalf("decoding body: %v", err)
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"yes, you are locked"}}]}`)
+	}))
+	defer server.Close()
+
+	client, err := New(Options{APIKey: "k", BaseURL: server.URL, Model: "m"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	reply, err := client.Chat(context.Background(), "", []Message{
+		{Role: "user", Content: "am I locked?"},
+		{
+			Role: "assistant",
+			ToolCalls: []ToolCall{{
+				ID:       "call_1",
+				Type:     "function",
+				Function: ToolCallFunction{Name: "chastity_status", Arguments: "{}"},
+			}},
+		},
+		{Role: "tool", ToolCallID: "call_1", Content: "1 day remaining"},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if reply.Text != "yes, you are locked" {
+		t.Fatalf("text = %q", reply.Text)
+	}
+
+	messages := got["messages"].([]any)
+	if len(messages) != 3 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	assistant := messages[1].(map[string]any)
+	if assistant["role"] != "assistant" {
+		t.Fatalf("assistant = %#v", assistant)
+	}
+	calls, ok := assistant["tool_calls"].([]any)
+	if !ok || len(calls) != 1 {
+		t.Fatalf("tool_calls = %#v", assistant["tool_calls"])
+	}
+	toolMessage := messages[2].(map[string]any)
+	if toolMessage["role"] != "tool" || toolMessage["tool_call_id"] != "call_1" {
+		t.Fatalf("tool message = %#v", toolMessage)
+	}
+}
+
 func TestChatErrors(t *testing.T) {
 	cases := map[string]http.HandlerFunc{
 		"bad status": func(w http.ResponseWriter, r *http.Request) {
