@@ -42,12 +42,11 @@ Discord bot for the zxyz server, built on
   its own persona, and its own commands. It answers mentions and replies and
   can check a member's ChastiSafe lock status as a tool. See
   [Roleplay bot](#roleplay-bot).
-- **Member ChastiSafe access**: `/login` links a member's own ChastiSafe
-  developer code to their Discord account. `/lockees` summarizes everyone they
-  hold keys for, `/locks` lists their templates by popularity, `/lookup` shows
-  another account's keyholder and lockee stats, and `/chastity status` shows
-  their own locks. The roleplay bot keeps using its single keyholder code and
-  never reads these member codes.
+- **Member ChastiSafe access**: `/cs` links a member's own ChastiSafe
+  developer code and exposes their account, profiles, lock templates, and
+  running locks. Members can create, inspect, update, and delete templates, and
+  inspect or modify the running locks they are allowed to touch. The roleplay
+  bot keeps using its single keyholder code and never reads these member codes.
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -66,12 +65,16 @@ Discord bot for the zxyz server, built on
 - `/stats post` - refresh the analytics dashboard now
 - `/stats preview` - show a report without posting it
 - `/stats status` - show the schedule, next run, and last result
-- `/login` - submit your own ChastiSafe developer code in a private modal
-- `/logout` - remove your saved ChastiSafe code
-- `/lockees` - list your ChastiSafe lockees and summarize their locks
-- `/locks` - list your lock templates sorted by lockee count
-- `/lookup user:<id|username#number>` - show another ChastiSafe profile's keyholder and lockee stats
-- `/chastity status` - show your own ChastiSafe locks (main bot)
+- `/cs login` - submit your own ChastiSafe developer code in a private modal
+- `/cs logout` - remove your saved ChastiSafe code
+- `/cs account` - show the ChastiSafe account linked to your Discord user
+- `/cs lookup user:<id|username#number>` - show another profile's keyholder and lockee stats
+- `/cs status` - show your own active locks
+- `/cs lockees` - list your lockees and summarize their locks
+- `/cs templates` - list your lock templates sorted by popularity
+- `/cs template view|create|clone|update|delete|simulate|card|background` - manage templates
+- `/cs locks` - list running locks
+- `/cs lock view|load|addtime|settime|freeze|hide|purpose|cards|settings|unlock|reset|abandon|split` - manage running locks
 - `/chastity status` - show your ChastiSafe lock status (roleplay bot)
 - `/prompt` - show the persona system prompt (roleplay bot admins)
 
@@ -241,13 +244,13 @@ project starts tagging releases.
 ## Member ChastiSafe access
 
 The main bot can act on behalf of individual members. Each member submits their
-own developer code with `/login`, and every ChastiSafe command uses the code of
-the member who ran it. Codes are never shared between members.
+own developer code with `/cs login`, and every ChastiSafe command uses the code
+of the member who ran it. Codes are never shared between members.
 
-`/login` opens a private modal instead of a command option, so the code does not
-stay in Discord's local command history. The bot calls `/who` and requires the
-linked Discord ID on the ChastiSafe account to match the member who submitted
-the code. A code for a different account is rejected.
+`/cs login` opens a private modal instead of a command option, so the code does
+not stay in Discord's local command history. The bot calls `/who` and requires
+the linked Discord ID on the ChastiSafe account to match the member who
+submitted the code. A code for a different account is rejected.
 
 The code is encrypted with AES-256-GCM before it is written to SQLite. Set
 `CHASTISAFE_STORE_KEY` to a 32-byte key encoded as base64 or hex to control the
@@ -255,17 +258,65 @@ key yourself. When it is empty, the bot creates `<database dir>/chastisafe.key`
 with mode `0600` on first start and reuses it. Back up that file with the
 database, or every saved login becomes unreadable.
 
+### Commands
+
 | Command | Requires login | Result |
 | --- | --- | --- |
-| `/login` | no | Private modal that validates and stores the caller's code |
-| `/logout` | no | Deletes the caller's stored code |
-| `/lockees` | yes | Every active lockee with frozen, ready, timer, card, and check-in state |
-| `/locks` | yes | The caller's templates, sorted by lockee count |
-| `/lookup user:<id or username#number>` | yes | A public profile's lockee and keyholder stats, ratings, levels, and current locks |
-| `/chastity status` | yes | The caller's own active locks |
+| `/cs login` | no | Private modal that validates and stores the caller's code |
+| `/cs logout` | no | Deletes the caller's stored code |
+| `/cs account` | yes | The linked ChastiSafe account and profile |
+| `/cs lookup user:<id or username#number>` | yes | A public profile's lockee and keyholder stats |
+| `/cs status` | yes | The caller's own active locks |
+| `/cs lockees` | yes | Every active lockee with state, timers, cards, and check-ins |
+| `/cs templates` | yes | The caller's templates, sorted by lockee count |
+| `/cs template ...` | yes | Template view, create, clone, update, delete, simulate, card, and background actions |
+| `/cs locks` | yes | Running locks, filtered by scope and state |
+| `/cs lock ...` | yes | Running lock view, load, modify, and end actions |
 
-`/locks` covers the logged-in account's templates. The ChastiSafe API has no
-global public lock directory, so `lockees` is the popularity value it sorts by.
+### Template commands
+
+```
+/cs template view ref:<id or name>
+/cs template create name:<name> type:<timer or card> [fields]
+/cs template clone ref:<id or name> name:<new name>
+/cs template update ref:<id or name> [fields]
+/cs template delete ref:<id or name> confirm:true
+/cs template simulate ref:<id or name>
+/cs template card ref:<id or name> card:<card> min:<n> max:<n>
+/cs template background ref:<id or name> background:<name>
+```
+
+Durations accept `30m`, `2h`, `1d`, or combinations such as `1d12h`. Card lists
+use `green:2,red:1`, or short letters such as `g:2,r:1`. Purposes accept a
+comma-separated list such as `chastity,task`, or `all`.
+
+### Running lock commands
+
+```
+/cs locks [scope:mine|lockees|all] [state:active|frozen|ready]
+/cs lock view ref:<id, name, lockee, or unique prefix>
+/cs lock load template:<id or name> code:<code> [purpose]
+/cs lock addtime ref:<lock> amount:<duration>
+/cs lock settime ref:<lock> amount:<duration>
+/cs lock freeze ref:<lock> frozen:<true or false>
+/cs lock hide ref:<lock> hidden:<true or false>
+/cs lock purpose ref:<lock> purpose:<purpose>
+/cs lock cards ref:<lock> add:<cards> remove:<cards> [message] [show]
+/cs lock settings ref:<lock> [settings]
+/cs lock unlock ref:<lock> confirm:true
+/cs lock reset ref:<lock> confirm:true
+/cs lock abandon ref:<lock> confirm:true
+/cs lock split ref:<lock> count:<n> confirm:true
+```
+
+Destructive actions require `confirm:true`. Removing cards also requires it.
+Lock combinations and unlock codes are never displayed. `/cs lock unlock` and
+`/cs lock reset` report success without showing the code. Template passcodes are
+write-only in Discord and are reported only as set or not set.
+
+`/cs templates` covers the logged-in account's templates. The ChastiSafe API has
+no global public lock directory, so `lockees` is the popularity value it sorts
+by. Scripts, tasks, pillory, and lockee lifecycle actions are not exposed yet.
 All replies are ephemeral.
 
 This feature is separate from the roleplay bot. Raven still uses one account

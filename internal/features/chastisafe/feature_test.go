@@ -18,6 +18,8 @@ import (
 )
 
 type fakeClient struct {
+	*cs.Client
+
 	identity   *cs.Identity
 	whoErr     error
 	profile    *cs.Profile
@@ -96,7 +98,7 @@ func newTestFeature(t *testing.T, client *fakeClient) (*Feature, *store.Store) {
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Now:    func() time.Time { return now },
 	})
-	f.newClient = func(token string) (lockClient, error) {
+	f.newClient = func(token string) (cs.API, error) {
 		if strings.TrimSpace(token) == "" {
 			return nil, cs.ErrUnauthorized
 		}
@@ -176,7 +178,7 @@ func TestAPIFailureDeletesRejectedCode(t *testing.T) {
 		t.Fatalf("authenticate: %v", err)
 	}
 	message := f.apiFailure(ctx, "user-1", cs.ErrUnauthorized)
-	if !strings.Contains(message, "/login") {
+	if !strings.Contains(message, "/cs login") {
 		t.Fatalf("message = %q", message)
 	}
 	cred, err := st.GetChastiSafeCredential(ctx, "user-1")
@@ -188,159 +190,33 @@ func TestAPIFailureDeletesRejectedCode(t *testing.T) {
 	}
 }
 
-func TestLockeesTextSortsByUrgency(t *testing.T) {
-	locks := []cs.LoadedLock{
-		{
-			LockName:       "Long timer",
-			Lockee:         "bob",
-			Type:           "timer",
-			TimerRemaining: int((2 * time.Hour).Seconds()),
-		},
-		{
-			LockName:          "Frozen timer",
-			Lockee:            "alice",
-			Type:              "timer",
-			FrozenByKeyholder: true,
-			TimerRemaining:    int((10 * time.Hour).Seconds()),
-		},
-		{
-			LockName:      "Ready cards",
-			Lockee:        "cara",
-			Type:          "card",
-			ReadyToUnlock: true,
-			CardCount:     2,
-		},
+func TestServiceForCachesPerMember(t *testing.T) {
+	ctx := context.Background()
+	client := &fakeClient{identity: &cs.Identity{User: "lockee#0", ID: "user-1"}}
+	f, _ := newTestFeature(t, client)
+	if _, err := f.authenticate(ctx, "user-1", "secret-code"); err != nil {
+		t.Fatalf("authenticate: %v", err)
 	}
 
-	text := lockeesText(locks)
-	if !strings.Contains(text, "**3 active lockees**") {
-		t.Fatalf("text missing header: %s", text)
+	first, _, err := f.serviceFor(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("serviceFor: %v", err)
 	}
-	if !strings.Contains(text, "Frozen: 1") || !strings.Contains(text, "Ready: 1") {
-		t.Fatalf("text missing summary: %s", text)
+	second, _, err := f.serviceFor(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("serviceFor again: %v", err)
 	}
-
-	cara := strings.Index(text, "cara")
-	alice := strings.Index(text, "alice")
-	bob := strings.Index(text, "bob")
-	if cara < 0 || alice < 0 || bob < 0 {
-		t.Fatalf("text missing a lockee: %s", text)
-	}
-	if !(cara < alice && alice < bob) {
-		t.Fatalf("lockees are not sorted by urgency: %s", text)
-	}
-}
-
-func TestProfileTextShowsBothSides(t *testing.T) {
-	profile := &cs.Profile{
-		User:    "testuser#0",
-		ID:      "123",
-		Visible: true,
-		SelfStats: cs.Stats{
-			"CHASTITY": 79,
-			"BONDAGE":  3600,
-		},
-		SelfLockCounts: cs.Stats{
-			"CHASTITY": 1,
-			"TASK":     2,
-		},
-		KeyholderStats: cs.Stats{
-			"CHASTITY": 86400,
-		},
-		KeyholderLockCounts: cs.Stats{
-			"CHASTITY": 5,
-		},
-		Ratings: cs.Ratings{
-			RatingsAsLockeeCount:     18,
-			AverageRatingAsLockee:    4.8,
-			RatingsAsKeyholderCount:  0,
-			AverageRatingAsKeyholder: 0,
-		},
-		Levels: cs.Levels{ChastityLevel: "Intermediate"},
-		LockInfo: cs.LockInfo{ChastityLocks: []cs.LockInfoEntry{
-			{
-				Keyholder: "keyholder#0",
-				LockName:  "Steel",
-				LoadTime:  cs.Time{Time: time.Date(2026, 11, 22, 10, 0, 0, 0, time.UTC)},
-			},
-		}},
+	if first != second {
+		t.Fatal("service was not cached")
 	}
 
-	text := profileText(profile)
-	for _, want := range []string{
-		"**testuser#0**",
-		"**Lockee stats**",
-		"**Keyholder stats**",
-		"1 chastity lock",
-		"2 task locks",
-		"1m 19s chastity",
-		"1h bondage",
-		"1d chastity",
-		"4.8 / 5 from 18 ratings",
-		"no ratings yet",
-		"Level: chastity Intermediate",
-		"Steel, held by keyholder#0",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("profile text missing %q:\n%s", want, text)
-		}
+	f.invalidateService("user-1")
+	third, _, err := f.serviceFor(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("serviceFor after invalidate: %v", err)
 	}
-}
-
-func TestProfileTextEmpty(t *testing.T) {
-	if got := profileText(nil); got != "No ChastiSafe profile found." {
-		t.Fatalf("profileText(nil) = %q", got)
-	}
-}
-
-func TestLockeesTextEmpty(t *testing.T) {
-	if got := lockeesText(nil); got != "No active lockees." {
-		t.Fatalf("text = %q", got)
-	}
-}
-
-func TestLocksTextSortsByPopularity(t *testing.T) {
-	templates := []cs.Template{
-		{LockName: "Rare", Lockees: 1, LockType: "TIMEDLOCK", Status: "ENABLED"},
-		{LockName: "Popular", Lockees: 9, LockType: "CARDLOCK", Status: "ENABLED"},
-		{LockName: "Unused", Lockees: 0, LockType: "TIMEDLOCK", Status: "DISABLED"},
-	}
-
-	text := locksText(templates)
-	popular := strings.Index(text, "Popular")
-	rare := strings.Index(text, "Rare")
-	unused := strings.Index(text, "Unused")
-	if popular < 0 || rare < 0 || unused < 0 {
-		t.Fatalf("text missing a template: %s", text)
-	}
-	if !(popular < rare && rare < unused) {
-		t.Fatalf("templates are not sorted by popularity: %s", text)
-	}
-	if !strings.Contains(text, "9 lockees") {
-		t.Fatalf("text missing popularity: %s", text)
-	}
-}
-
-func TestPersonalStatusTextFiltersKeyholderLocks(t *testing.T) {
-	locks := []cs.LoadedLock{
-		{LockName: "Mine", LockeeID: "user-1", Type: "timer", TimerRemaining: 3600},
-		{LockName: "Someone else", LockeeID: "user-2", Type: "timer", TimerRemaining: 3600},
-	}
-
-	text := personalStatusText(locks, "user-1")
-	if !strings.Contains(text, "Mine") {
-		t.Fatalf("text missing own lock: %s", text)
-	}
-	if strings.Contains(text, "Someone else") {
-		t.Fatalf("text includes another member's lock: %s", text)
-	}
-}
-
-func TestPersonalStatusTextWithoutIdentity(t *testing.T) {
-	locks := []cs.LoadedLock{{LockName: "Lock", Type: "timer", TimerRemaining: 60}}
-	text := personalStatusText(locks, "")
-	if !strings.Contains(text, "Lock") {
-		t.Fatalf("text = %q", text)
+	if third == first {
+		t.Fatal("service cache was not invalidated")
 	}
 }
 

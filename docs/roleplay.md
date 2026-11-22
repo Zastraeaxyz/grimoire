@@ -46,9 +46,10 @@ The developer code is a password. It is sent in the `chastisafedev` header,
 never logged, and never written to the database. Raven uses this one account and
 never reads the per-member codes stored by the main bot.
 
-Grimoire itself has separate member-scoped ChastiSafe commands. A member runs
-`/login` on the main bot, and that member's encrypted code is used only for
-their own `/lockees`, `/locks`, and `/chastity status`. See
+Grimoire itself has separate member-scoped ChastiSafe commands under `/cs`. A
+member runs `/cs login` on the main bot, and that member's encrypted code is
+used only for their own `/cs status`, `/cs lockees`, `/cs templates`, and
+`/cs locks`. See
 [Member ChastiSafe access](../README.md#member-chastisafe-access). Raven is not
 part of that path and keeps using only `CHASTISAFE_KEYHOLDER_CODE`.
 

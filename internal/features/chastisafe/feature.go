@@ -1,7 +1,7 @@
 // Package chastisafe adds member-scoped ChastiSafe commands to Grimoire.
 //
-// Every member stores their own developer code after /login. Commands resolve
-// that code for the caller only. The roleplay bot has its own separate
+// Every member stores their own developer code after /cs login. Commands
+// resolve that code for the caller only. The roleplay bot has its own separate
 // keyholder client and never uses this package.
 package chastisafe
 
@@ -28,15 +28,6 @@ var (
 	errNotOwner             = errors.New("chastisafe: code belongs to another Discord account")
 )
 
-// lockClient is the ChastiSafe surface the commands need.
-type lockClient interface {
-	Who(ctx context.Context) (*cs.Identity, error)
-	ProfileFor(ctx context.Context, user string) (*cs.Profile, error)
-	Loaded(ctx context.Context) ([]cs.LoadedLock, error)
-	Lockees(ctx context.Context) ([]cs.LoadedLock, error)
-	Templates(ctx context.Context) ([]cs.Template, error)
-}
-
 // Options configures the feature.
 type Options struct {
 	Store      *store.Store
@@ -56,13 +47,23 @@ type Feature struct {
 	userAgent string
 	http      *http.Client
 	log       *slog.Logger
+	now       func() time.Time
 
-	newClient func(token string) (lockClient, error)
-	limiter   *loginLimiter
+	newClient  func(token string) (cs.API, error)
+	limiter    *loginLimiter
+	serviceTTL time.Duration
+
+	servicesMu sync.Mutex
+	services   map[string]cachedService
+}
+
+type cachedService struct {
+	service *cs.Service
+	expires time.Time
 }
 
 // New builds the feature. A nil store or box leaves the commands registered
-// but makes /login explain that the feature is not configured.
+// but makes /cs login explain that the feature is not configured.
 func New(opts Options) *Feature {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -78,15 +79,18 @@ func New(opts Options) *Feature {
 	}
 
 	f := &Feature{
-		store:     opts.Store,
-		box:       opts.Box,
-		baseURL:   strings.TrimSpace(opts.BaseURL),
-		userAgent: opts.UserAgent,
-		http:      opts.HTTPClient,
-		log:       opts.Logger,
-		limiter:   newLoginLimiter(5, 10*time.Minute, opts.Now),
+		store:      opts.Store,
+		box:        opts.Box,
+		baseURL:    strings.TrimSpace(opts.BaseURL),
+		userAgent:  opts.UserAgent,
+		http:       opts.HTTPClient,
+		log:        opts.Logger,
+		now:        opts.Now,
+		limiter:    newLoginLimiter(5, 10*time.Minute, opts.Now),
+		serviceTTL: 30 * time.Second,
+		services:   make(map[string]cachedService),
 	}
-	f.newClient = func(token string) (lockClient, error) {
+	f.newClient = func(token string) (cs.API, error) {
 		return cs.New(cs.Options{
 			Token:      token,
 			BaseURL:    f.baseURL,
@@ -103,13 +107,9 @@ func (f *Feature) Register(b *bot.Bot) {
 	if b == nil {
 		return
 	}
-	b.AddPublicCommand(loginCommand(), f.handleLoginCommand)
-	b.AddPublicCommand(logoutCommand(), f.handleLogoutCommand)
-	b.AddPublicCommand(lockeesCommand(), f.handleLockeesCommand)
-	b.AddPublicCommand(locksCommand(), f.handleLocksCommand)
-	b.AddPublicCommand(lookupCommand(), f.handleLookupCommand)
-	b.AddPublicCommand(chastityCommand(), f.handleChastityCommand)
+	b.AddPublicCommand(csCommand(), f.handleCSCommand)
 	b.AddModal(modalNamespace, f.handleLoginModal)
+	b.AddAutocomplete(csCommandName, f.handleCSAutocomplete)
 }
 
 // String describes the feature without exposing configuration secrets.
@@ -146,8 +146,16 @@ func (f *Feature) credentialFor(ctx context.Context, userID string) (*store.Chas
 	return cred, code, nil
 }
 
-// clientFor returns a ChastiSafe client bound to the caller's own code.
-func (f *Feature) clientFor(ctx context.Context, userID string) (lockClient, *store.ChastiSafeCredential, error) {
+// serviceFor returns the caller's cached service, creating one on demand.
+func (f *Feature) serviceFor(ctx context.Context, userID string) (*cs.Service, *store.ChastiSafeCredential, error) {
+	if service, ok := f.cachedService(userID); ok {
+		cred, _, err := f.credentialFor(ctx, userID)
+		if err == nil {
+			return service, cred, nil
+		}
+		f.invalidateService(userID)
+	}
+
 	cred, code, err := f.credentialFor(ctx, userID)
 	if err != nil {
 		return nil, nil, err
@@ -156,7 +164,31 @@ func (f *Feature) clientFor(ctx context.Context, userID string) (lockClient, *st
 	if err != nil {
 		return nil, nil, err
 	}
-	return client, cred, nil
+	service := cs.NewService(client)
+	service.SetClock(f.now)
+	f.servicesMu.Lock()
+	f.services[userID] = cachedService{service: service, expires: f.now().Add(f.serviceTTL)}
+	f.servicesMu.Unlock()
+	return service, cred, nil
+}
+
+func (f *Feature) cachedService(userID string) (*cs.Service, bool) {
+	f.servicesMu.Lock()
+	defer f.servicesMu.Unlock()
+	entry, ok := f.services[userID]
+	if !ok || f.now().After(entry.expires) {
+		if ok {
+			delete(f.services, userID)
+		}
+		return nil, false
+	}
+	return entry.service, true
+}
+
+func (f *Feature) invalidateService(userID string) {
+	f.servicesMu.Lock()
+	defer f.servicesMu.Unlock()
+	delete(f.services, userID)
 }
 
 // authenticate validates a submitted code and stores it for the member.
@@ -196,6 +228,7 @@ func (f *Feature) authenticate(ctx context.Context, userID, code string) (*cs.Id
 	}); err != nil {
 		return nil, fmt.Errorf("saving a chastisafe credential: %w", err)
 	}
+	f.invalidateService(userID)
 	return identity, nil
 }
 
@@ -207,6 +240,7 @@ func (f *Feature) forget(ctx context.Context, userID string) error {
 	if err := f.store.DeleteChastiSafeCredential(ctx, userID); err != nil {
 		return fmt.Errorf("deleting a chastisafe credential: %w", err)
 	}
+	f.invalidateService(userID)
 	return nil
 }
 
@@ -219,20 +253,46 @@ func (f *Feature) apiFailure(ctx context.Context, userID string, err error) stri
 				f.log.Warn("deleting a rejected chastisafe credential", "user_id", userID, "err", delErr)
 			}
 		}
+		f.invalidateService(userID)
 		f.log.Info("chastisafe rejected a saved code", "user_id", userID)
-		return "ChastiSafe rejected your saved code. Run `/login` again."
+		return "ChastiSafe rejected your saved code. Run `/cs login` again."
 	}
 	if errors.Is(err, errNotLoggedIn) {
-		return "Run `/login` first with your ChastiSafe developer code."
+		return "Run `/cs login` first with your ChastiSafe developer code."
 	}
 	if errors.Is(err, errCredentialUnreadable) {
-		return "I cannot read your saved ChastiSafe code. Run `/login` again."
+		return "I cannot read your saved ChastiSafe code. Run `/cs login` again."
 	}
 	if errors.Is(err, errNotConfigured) {
 		return "ChastiSafe login is not configured on this bot."
 	}
 	if errors.Is(err, cs.ErrNotKeyholder) {
-		return "This ChastiSafe account is not a keyholder, so it has no lockees to show."
+		return "ChastiSafe says this account is not the keyholder for that lock or action."
+	}
+	if errors.Is(err, cs.ErrRefEmpty) {
+		return "Give me a template or lock reference."
+	}
+	if errors.Is(err, cs.ErrRefNotFound) {
+		return "I could not find that template or lock. Run `/cs templates` or `/cs locks` to see the names."
+	}
+	if errors.Is(err, cs.ErrRefAmbiguous) {
+		var ambiguous *cs.AmbiguousRefError
+		if errors.As(err, &ambiguous) {
+			return "That reference is ambiguous. Matches: " + strings.Join(ambiguous.Candidates, ", ")
+		}
+		return "That reference matches more than one template or lock. Use an ID."
+	}
+	if errors.Is(err, cs.ErrProfileNotPublic) {
+		return "That ChastiSafe profile is not public."
+	}
+	if errors.Is(err, cs.ErrLockNotFound) {
+		return "That lock no longer exists."
+	}
+	if errors.Is(err, cs.ErrLockNotReady) {
+		return "That lock is not ready for this action."
+	}
+	if errors.Is(err, cs.ErrNotAllowed) {
+		return "ChastiSafe does not allow that action for this lock."
 	}
 	f.log.Warn("chastisafe request failed", "user_id", userID, "err", err)
 	return "I could not reach ChastiSafe right now. Try again in a moment."
