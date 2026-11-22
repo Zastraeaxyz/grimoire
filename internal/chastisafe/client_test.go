@@ -322,6 +322,37 @@ func TestUpdatePayloads(t *testing.T) {
 	}
 }
 
+func TestUpdateSettingsPayload(t *testing.T) {
+	frozen := true
+	hidden := false
+	remaining := 300
+	purpose := PurposeTest
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/update" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["id"] != "lock-id" || body["frozenbykh"] != true || body["hidden"] != false {
+			t.Errorf("body = %+v", body)
+		}
+		if body["remainingtime"] != float64(300) || body["lockPurpose"] != "TEST" {
+			t.Errorf("body = %+v", body)
+		}
+		_, _ = w.Write([]byte(`{"id":"lock-id","type":"timer","timeremaining":300}`))
+	})
+	if _, err := client.UpdateSettings(context.Background(), "lock-id", KeyholderSettings{
+		FrozenByKeyholder: &frozen,
+		Hidden:            &hidden,
+		RemainingTime:     &remaining,
+		LockPurpose:       &purpose,
+	}); err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+}
+
 func TestOpen(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
