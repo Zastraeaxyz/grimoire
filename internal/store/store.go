@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 7
+const schemaVersion = 8
 
 // Store is the SQLite-backed persistence layer.
 type Store struct {
@@ -187,6 +187,19 @@ func migrate(ctx context.Context, db *sql.DB) error {
 			statements: []string{
 				`ALTER TABLE guild_settings ADD COLUMN stats_channel_id TEXT NOT NULL DEFAULT ''`,
 				`ALTER TABLE guild_settings ADD COLUMN stats_message_id TEXT NOT NULL DEFAULT ''`,
+			},
+		},
+		{
+			version: 8,
+			statements: []string{
+				`CREATE TABLE IF NOT EXISTS chastisafe_credentials (
+					discord_user_id TEXT PRIMARY KEY,
+					chastisafe_id TEXT NOT NULL DEFAULT '',
+					chastisafe_user TEXT NOT NULL DEFAULT '',
+					secret BLOB NOT NULL,
+					created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+					updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+				)`,
 			},
 		},
 	}
