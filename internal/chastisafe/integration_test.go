@@ -667,6 +667,8 @@ func TestIntegrationKeyholderActions(t *testing.T) {
 		t.Fatalf("Split returned %d locks", len(split))
 	}
 	for _, lock := range split {
+		lock := lock
+		t.Cleanup(func() { cleanupLoadedLock(t, lockee, lock.ID) })
 		if _, err := keyholder.Unlock(ctx, lock.ID); err != nil {
 			t.Fatalf("Unlock split lock %s: %v", lock.ID, err)
 		}
