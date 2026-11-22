@@ -143,6 +143,23 @@ func TestCommandDenial(t *testing.T) {
 	}
 }
 
+func TestCommandDenialAllowsPublicCommands(t *testing.T) {
+	b := &Bot{
+		Log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		publicCommands: map[string]struct{}{"chastity": {}},
+		userCommands:   map[string]struct{}{},
+	}
+	member := &discordgo.Member{}
+	i := &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{Member: member}}
+
+	if got := b.commandDenial(context.Background(), i, "chastity"); got != "" {
+		t.Fatalf("commandDenial = %q, want access", got)
+	}
+	if got := b.commandDenial(context.Background(), i, "rss"); !strings.Contains(got, "Manage Server") {
+		t.Fatalf("commandDenial = %q, want an admin-only denial", got)
+	}
+}
+
 func TestHandleInteractionLogsCommandUsage(t *testing.T) {
 	var buf bytes.Buffer
 	b := &Bot{

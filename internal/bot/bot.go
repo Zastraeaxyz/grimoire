@@ -56,6 +56,7 @@ type Bot struct {
 	commands          map[string]*discordgo.ApplicationCommand
 	commandHandlers   map[string]CommandHandler
 	userCommands      map[string]struct{}
+	publicCommands    map[string]struct{}
 	userRole          UserRoleLookup
 	autocompletes     map[string]AutocompleteHandler
 	componentHandlers map[string]ComponentHandler
@@ -93,6 +94,7 @@ func New(opts Options) (*Bot, error) {
 		commands:          make(map[string]*discordgo.ApplicationCommand),
 		commandHandlers:   make(map[string]CommandHandler),
 		userCommands:      make(map[string]struct{}),
+		publicCommands:    make(map[string]struct{}),
 		autocompletes:     make(map[string]AutocompleteHandler),
 		componentHandlers: make(map[string]ComponentHandler),
 	}
@@ -118,6 +120,14 @@ func (b *Bot) AddUserCommand(cmd *discordgo.ApplicationCommand, handler CommandH
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.userCommands[cmd.Name] = struct{}{}
+}
+
+// AddPublicCommand registers a slash command that every member may run.
+func (b *Bot) AddPublicCommand(cmd *discordgo.ApplicationCommand, handler CommandHandler) {
+	b.AddCommand(cmd, handler)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.publicCommands[cmd.Name] = struct{}{}
 }
 
 // SetUserRoleLookup installs the source of the user command role. Without it,
@@ -303,10 +313,14 @@ func (b *Bot) commandDenial(ctx context.Context, i *discordgo.InteractionCreate,
 	}
 
 	b.mu.RLock()
+	_, publicCommand := b.publicCommands[name]
 	_, userCommand := b.userCommands[name]
 	lookup := b.userRole
 	b.mu.RUnlock()
 
+	if publicCommand {
+		return ""
+	}
 	if !userCommand {
 		return "You need the **Manage Server** permission to use this command."
 	}
