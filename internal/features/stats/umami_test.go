@@ -114,7 +114,7 @@ func TestCollectReadsEveryWindow(t *testing.T) {
 	var (
 		mu          sync.Mutex
 		statsStarts []string
-		types       = map[string]bool{}
+		pathCalls   int
 	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -124,15 +124,13 @@ func TestCollectReadsEveryWindow(t *testing.T) {
 			mu.Unlock()
 			_, _ = io.WriteString(w, `{"pageviews":9,"visitors":4,"visits":5,"bounces":1,"totaltime":300}`)
 		case strings.HasSuffix(r.URL.Path, "/metrics"):
-			dimension := r.URL.Query().Get("type")
-			mu.Lock()
-			types[dimension] = true
-			mu.Unlock()
-			if dimension == "path" {
-				_, _ = io.WriteString(w, `[{"x":"/zastraeachastity","y":60},{"x":"/home","y":20},{"x":"/zastraeachastity/archive","y":5}]`)
-				return
+			if dimension := r.URL.Query().Get("type"); dimension != "path" {
+				t.Errorf("unexpected metrics type %q", dimension)
 			}
-			_, _ = io.WriteString(w, `[{"x":"value","y":1}]`)
+			mu.Lock()
+			pathCalls++
+			mu.Unlock()
+			_, _ = io.WriteString(w, `[{"x":"/zastraeachastity","y":60},{"x":"/home","y":20},{"x":"/zastraeachastity/archive","y":5}]`)
 		default:
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
@@ -169,17 +167,11 @@ func TestCollectReadsEveryWindow(t *testing.T) {
 			t.Errorf("unexpected stats window start %s", start)
 		}
 	}
-
-	for _, dimension := range []string{"path", "event", "country", "referrer", "device"} {
-		if !types[dimension] {
-			t.Errorf("missing metrics type %q", dimension)
-		}
+	if pathCalls != 1 {
+		t.Errorf("path metric calls = %d, want 1", pathCalls)
 	}
 
 	if len(rep.topBlogs) != 1 || rep.topBlogs[0].X != "zastraeachastity" || rep.topBlogs[0].Y != 65 {
 		t.Fatalf("topBlogs = %+v", rep.topBlogs)
-	}
-	if len(rep.topPages) != 1 || rep.topPages[0].X != "/home" {
-		t.Fatalf("topPages = %+v", rep.topPages)
 	}
 }

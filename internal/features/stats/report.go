@@ -34,12 +34,7 @@ type report struct {
 	yesterday *WebsiteStats
 	week      *WebsiteStats
 
-	topBlogs     []Metric
-	topPages     []Metric
-	topEvents    []Metric
-	topCountries []Metric
-	topReferrers []Metric
-	topDevices   []Metric
+	topBlogs []Metric
 }
 
 // collect reads the three summary windows and the last-24-hours rankings. The
@@ -91,24 +86,8 @@ func (f *Feature) collect(ctx context.Context, now time.Time) (*report, error) {
 		if err != nil {
 			return err
 		}
-		rep.topBlogs, rep.topPages = splitPaths(paths)
+		rep.topBlogs, _ = splitPaths(paths)
 		return nil
-	})
-	run(func() (err error) {
-		rep.topEvents, err = f.umami.metrics(ctx, "event", rankStart, now, 25)
-		return err
-	})
-	run(func() (err error) {
-		rep.topCountries, err = f.umami.metrics(ctx, "country", rankStart, now, 10)
-		return err
-	})
-	run(func() (err error) {
-		rep.topReferrers, err = f.umami.metrics(ctx, "referrer", rankStart, now, 10)
-		return err
-	})
-	run(func() (err error) {
-		rep.topDevices, err = f.umami.metrics(ctx, "device", rankStart, now, 10)
-		return err
 	})
 
 	wg.Wait()
@@ -220,8 +199,8 @@ func sortMetrics(rows []Metric) {
 	})
 }
 
-// buildEmbeds renders one refresh as two embeds: the summary and the ranked
-// lists. Every value is truncated to Discord's field budget.
+// buildEmbeds renders one refresh as a compact dashboard: the summary numbers
+// and the most visited blogs.
 func buildEmbeds(rep *report, siteURL string) []*discordgo.MessageEmbed {
 	now := rep.now
 	return []*discordgo.MessageEmbed{
@@ -257,39 +236,13 @@ func buildEmbeds(rep *report, siteURL string) []*discordgo.MessageEmbed {
 					Value:  engagementText(rep.yesterday),
 					Inline: true,
 				},
+				{
+					Name:  "Top blogs (last 24 hours)",
+					Value: metricField(rep.topBlogs, rankedLimit, func(row Metric) string { return blogLine(row, siteURL) }),
+				},
 			},
 			Footer:    &discordgo.MessageEmbedFooter{Text: "Umami · updated"},
 			Timestamp: now.UTC().Format(time.RFC3339),
-		},
-		{
-			Title: "Last 24 hours",
-			Color: embedColor,
-			Fields: []*discordgo.MessageEmbedField{
-				{
-					Name:  "Top blogs",
-					Value: metricField(rep.topBlogs, rankedLimit, func(row Metric) string { return blogLine(row, siteURL) }),
-				},
-				{
-					Name:  "App pages",
-					Value: metricField(rep.topPages, rankedLimit, pageLine),
-				},
-				{
-					Name:  "Activity",
-					Value: metricField(rep.topEvents, rankedLimit, plainLine),
-				},
-				{
-					Name:  "Countries",
-					Value: metricField(rep.topCountries, rankedLimit, countryLine),
-				},
-				{
-					Name:  "Referrers",
-					Value: metricField(rep.topReferrers, 4, plainLine),
-				},
-				{
-					Name:  "Devices",
-					Value: metricField(rep.topDevices, 4, plainLine),
-				},
-			},
 		},
 	}
 }
@@ -314,44 +267,6 @@ func blogLine(row Metric, siteURL string) string {
 	label := strings.NewReplacer("[", "", "]", "").Replace(slug)
 	link := base + "/" + url.PathEscape(slug)
 	return fmt.Sprintf("[%s](%s) · %s", truncate(label, 60), link, formatFloat(row.Y))
-}
-
-func pageLine(row Metric) string {
-	path := row.X
-	label := path
-	if path == "/" {
-		label = "landing page"
-	}
-	return fmt.Sprintf("`%s` · %s", truncate(label, 80), formatFloat(row.Y))
-}
-
-func countryLine(row Metric) string {
-	if flag := flagEmoji(row.X); flag != "" {
-		return fmt.Sprintf("%s %s · %s", flag, row.X, formatFloat(row.Y))
-	}
-	return plainLine(row)
-}
-
-func plainLine(row Metric) string {
-	return fmt.Sprintf("%s · %s", truncate(row.X, 80), formatFloat(row.Y))
-}
-
-// flagEmoji turns an ISO 3166-1 alpha-2 code into its regional-indicator flag.
-func flagEmoji(code string) string {
-	if len(code) != 2 {
-		return ""
-	}
-	code = strings.ToUpper(code)
-	for _, r := range code {
-		if r < 'A' || r > 'Z' {
-			return ""
-		}
-	}
-	var out strings.Builder
-	for _, r := range code {
-		out.WriteRune(0x1F1E6 + (r - 'A'))
-	}
-	return out.String()
 }
 
 func deltaText(current, previous int64) string {

@@ -82,17 +82,12 @@ func TestBuildEmbeds(t *testing.T) {
 			{X: "zastraeachastity", Y: 60},
 			{X: "Dogtanian69", Y: 33},
 		},
-		topPages:     []Metric{{X: "/", Y: 206}, {X: "/home", Y: 162}},
-		topEvents:    []Metric{{X: "search-results", Y: 1876}},
-		topCountries: []Metric{{X: "US", Y: 219}},
-		topReferrers: []Metric{{X: "reddit.com", Y: 76}},
-		topDevices:   []Metric{{X: "mobile", Y: 285}},
 	}
 	rep.yesterday.Comparison.Visitors = 40
 
 	embeds := buildEmbeds(rep, "https://bdsmlr.zastraea.xyz/")
-	if len(embeds) != 2 {
-		t.Fatalf("embeds = %d, want 2", len(embeds))
+	if len(embeds) != 1 {
+		t.Fatalf("embeds = %d, want 1", len(embeds))
 	}
 
 	summary := embeds[0]
@@ -115,19 +110,11 @@ func TestBuildEmbeds(t *testing.T) {
 	if !strings.Contains(values, "Bounce rate 13%") {
 		t.Errorf("missing bounce rate: %q", values)
 	}
-
-	ranked := fieldValues(embeds[1])
-	if !strings.Contains(ranked, "[zastraeachastity](https://bdsmlr.zastraea.xyz/zastraeachastity) · 60") {
-		t.Errorf("missing blog link: %q", ranked)
+	if !strings.Contains(values, "[zastraeachastity](https://bdsmlr.zastraea.xyz/zastraeachastity) · 60") {
+		t.Errorf("missing blog link: %q", values)
 	}
-	if !strings.Contains(ranked, "landing page") {
-		t.Errorf("missing landing page label: %q", ranked)
-	}
-	if !strings.Contains(ranked, "search-results · 1,876") {
-		t.Errorf("missing event count: %q", ranked)
-	}
-	if !strings.Contains(ranked, "🇺🇸 US · 219") {
-		t.Errorf("missing country flag: %q", ranked)
+	if !strings.Contains(values, "[Dogtanian69](https://bdsmlr.zastraea.xyz/Dogtanian69) · 33") {
+		t.Errorf("missing second blog: %q", values)
 	}
 }
 
@@ -140,14 +127,15 @@ func TestBuildEmbedsWithNoData(t *testing.T) {
 		week:      &WebsiteStats{},
 	}
 	embeds := buildEmbeds(rep, defaultSiteURL)
-	if len(embeds) != 2 {
+	if len(embeds) != 1 {
 		t.Fatalf("embeds = %d", len(embeds))
 	}
-	if got := fieldValues(embeds[1]); strings.Count(got, "No data yet.") != 6 {
-		t.Fatalf("empty fields = %q", got)
+	values := fieldValues(embeds[0])
+	if strings.Count(values, "No data yet.") != 1 {
+		t.Fatalf("empty fields = %q", values)
 	}
-	if !strings.Contains(fieldValues(embeds[0]), "no earlier data") {
-		t.Fatalf("missing empty delta: %q", fieldValues(embeds[0]))
+	if !strings.Contains(values, "no earlier data") {
+		t.Fatalf("missing empty delta: %q", values)
 	}
 }
 
