@@ -18,6 +18,10 @@ type Options struct {
 	Token   string
 	GuildID string
 	Log     *slog.Logger
+
+	// Intents selects the gateway events the session subscribes to. Zero uses
+	// IntentsGuilds, which is all the command-driven features need.
+	Intents discordgo.Intent
 }
 
 // CommandHandler runs a slash command. Handlers are responsible for
@@ -29,6 +33,10 @@ type ComponentHandler func(ctx context.Context, s *discordgo.Session, i *discord
 
 // AutocompleteHandler answers suggestions for a slash command option.
 type AutocompleteHandler func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error
+
+// MessageHandler runs for every guild message the session receives. Features
+// that need message content must ask for the matching intents in Options.
+type MessageHandler func(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) error
 
 // ReadyHook runs after every gateway READY event.
 type ReadyHook func(ctx context.Context, s *discordgo.Session) error
@@ -51,6 +59,7 @@ type Bot struct {
 	userRole          UserRoleLookup
 	autocompletes     map[string]AutocompleteHandler
 	componentHandlers map[string]ComponentHandler
+	messageHandlers   []MessageHandler
 	readyHooks        []ReadyHook
 	commandsSynced    bool
 }
@@ -69,7 +78,11 @@ func New(opts Options) (*Bot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating discord session: %w", err)
 	}
-	s.Identify.Intents = discordgo.IntentsGuilds
+	intents := opts.Intents
+	if intents == 0 {
+		intents = discordgo.IntentsGuilds
+	}
+	s.Identify.Intents = intents
 	s.LogLevel = discordgo.LogWarning
 	s.ShouldReconnectOnError = true
 
@@ -85,6 +98,7 @@ func New(opts Options) (*Bot, error) {
 	}
 	s.AddHandler(b.handleReady)
 	s.AddHandler(b.handleInteraction)
+	s.AddHandler(b.handleMessageCreate)
 	return b, nil
 }
 
@@ -128,6 +142,18 @@ func (b *Bot) AddAutocomplete(commandName string, handler AutocompleteHandler) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.autocompletes[commandName] = handler
+}
+
+// AddMessageHandler registers work that runs for every guild message. Handlers
+// run concurrently so a slow model call never blocks the gateway. Each handler
+// gets its own timeout context.
+func (b *Bot) AddMessageHandler(handler MessageHandler) {
+	if handler == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.messageHandlers = append(b.messageHandlers, handler)
 }
 
 // AddReadyHook registers work that must be re-validated on every reconnect.
@@ -188,6 +214,37 @@ func (b *Bot) handleReady(s *discordgo.Session, r *discordgo.Ready) {
 		if err := hook(ctx, s); err != nil {
 			b.Log.Error("ready hook failed", "err", err)
 		}
+	}
+}
+
+const messageHandlerTimeout = 2 * time.Minute
+
+// handleMessageCreate fans a message out to every registered handler. The
+// handlers run in their own goroutines so gateway heartbeats stay responsive
+// while a feature calls a model.
+func (b *Bot) handleMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m == nil || m.Message == nil {
+		return
+	}
+
+	b.mu.RLock()
+	handlers := append([]MessageHandler(nil), b.messageHandlers...)
+	b.mu.RUnlock()
+
+	for _, handler := range handlers {
+		go func(handler MessageHandler) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					b.Log.Error("message handler panicked", "panic", recovered)
+				}
+			}()
+
+			ctx, cancel := context.WithTimeout(context.Background(), messageHandlerTimeout)
+			defer cancel()
+			if err := handler(ctx, s, m); err != nil {
+				b.Log.Error("message handler failed", "err", err)
+			}
+		}(handler)
 	}
 }
 
