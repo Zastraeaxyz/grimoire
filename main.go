@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -139,6 +140,16 @@ func run() error {
 // invalid ChastiSafe code disables only the persona.
 func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	rp := cfg.Roleplay
+
+	if rp.LockeeRoleID == "" {
+		return errors.New("ROLEPLAY_LOCKEE_ROLE_ID is required when DISCORD_ROLEPLAY_TOKEN is set")
+	}
+	if _, err := strconv.ParseUint(rp.LockeeRoleID, 10, 64); err != nil {
+		return fmt.Errorf("ROLEPLAY_LOCKEE_ROLE_ID %q is not a valid Discord snowflake", rp.LockeeRoleID)
+	}
+	if cfg.OpenRouterAPIKey == "" {
+		return errors.New("OPENROUTER_API_KEY is required when DISCORD_ROLEPLAY_TOKEN is set")
+	}
 
 	prompt, err := loadRoleplayPrompt(rp)
 	if err != nil {

@@ -140,27 +140,19 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadRoleplayRequiresCompanionSettings(t *testing.T) {
+func TestLoadRoleplayDoesNotRequireCompanionsAtLoad(t *testing.T) {
 	t.Setenv("DISCORD_TOKEN", "token")
 	t.Setenv("GUILD_ID", "123")
 	t.Setenv("DISCORD_ROLEPLAY_TOKEN", "roleplay-token")
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("ROLEPLAY_LOCKEE_ROLE_ID", "")
 
-	cases := []struct {
-		name string
-		key  string
-	}{
-		{name: "missing OpenRouter key", key: "OPENROUTER_API_KEY"},
-		{name: "missing lockee role", key: "ROLEPLAY_LOCKEE_ROLE_ID"},
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load should keep Grimoire running when roleplay is incomplete: %v", err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("OPENROUTER_API_KEY", "key")
-			t.Setenv("ROLEPLAY_LOCKEE_ROLE_ID", "456")
-			t.Setenv(tc.key, "")
-			if _, err := Load(); err == nil {
-				t.Fatal("expected an error")
-			}
-		})
+	if !cfg.Roleplay.Enabled() {
+		t.Fatal("roleplay should be enabled")
 	}
 }
 

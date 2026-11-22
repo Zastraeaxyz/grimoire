@@ -240,9 +240,6 @@ func (c *Config) validate() error {
 	if _, err := time.LoadLocation(c.StatsTimezone); err != nil {
 		return fmt.Errorf("STATS_TIMEZONE %q is not a time zone: %w", c.StatsTimezone, err)
 	}
-	if err := c.validateRoleplay(); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -259,46 +256,6 @@ func (c *Config) validateUmami() error {
 		return nil
 	}
 	return errors.New("UMAMI_URL, UMAMI_WEBSITE_ID and UMAMI_API_KEY must be set together, or all left empty")
-}
-
-// validateRoleplay validates the second bot only when it is turned on. A
-// misconfigured persona should not silently run as a bot nobody can use.
-func (c *Config) validateRoleplay() error {
-	rp := c.Roleplay
-	if !rp.Enabled() {
-		return nil
-	}
-	if c.OpenRouterAPIKey == "" {
-		return errors.New("OPENROUTER_API_KEY is required when DISCORD_ROLEPLAY_TOKEN is set")
-	}
-	if c.OpenRouterModel == "" {
-		return errors.New("OPENROUTER_MODEL must not be empty")
-	}
-	if _, err := strconv.ParseUint(rp.LockeeRoleID, 10, 64); err != nil {
-		return fmt.Errorf("ROLEPLAY_LOCKEE_ROLE_ID %q is not a valid Discord snowflake", rp.LockeeRoleID)
-	}
-	if rp.BotName == "" {
-		return errors.New("ROLEPLAY_BOT_NAME must not be empty")
-	}
-	if rp.ContextMessages < 1 || rp.ContextMessages > 100 {
-		return errors.New("ROLEPLAY_CONTEXT_MESSAGES must be between 1 and 100")
-	}
-	if rp.MaxChunks < 1 || rp.MaxChunks > 10 {
-		return errors.New("ROLEPLAY_MAX_CHUNKS must be between 1 and 10")
-	}
-	if rp.Timeout < 5*time.Second {
-		return errors.New("ROLEPLAY_TIMEOUT_SECONDS must be at least 5")
-	}
-	if rp.MaxConcurrent < 1 {
-		return errors.New("ROLEPLAY_MAX_CONCURRENT must be at least 1")
-	}
-	if rp.RateLimitCount < 1 {
-		return errors.New("ROLEPLAY_RATE_LIMIT_CAPACITY must be at least 1")
-	}
-	if rp.RateLimitWindow < time.Second {
-		return errors.New("ROLEPLAY_RATE_LIMIT_SECONDS must be at least 1")
-	}
-	return nil
 }
 
 // envInt reads a positive or zero integer environment variable.

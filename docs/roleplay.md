@@ -28,6 +28,9 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
 The persona needs its own Discord identity. The username and avatar live in the
 Discord Developer Portal, not in this repository.
 
+If the token is set but the lockee role, the OpenRouter key, or the prompt is
+missing, the persona logs an error and Grimoire keeps running.
+
 ## ChastiSafe
 
 The persona acts as one ChastiSafe keyholder account. Put that account's

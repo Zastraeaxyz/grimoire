@@ -236,6 +236,7 @@ commands, system prompt, intents, and rate limits, and it stays offline when
 - Only members with the lockee role can talk to it.
 - It reads ChastiSafe status for the member who is talking to it.
 - It has no memory and no ability to change a lock yet.
+- An incomplete roleplay configuration logs an error and leaves Grimoire running.
 
 Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 
