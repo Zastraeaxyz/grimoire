@@ -162,6 +162,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 	if c.token == "" {
 		return nil, ErrUnauthorized
 	}
+	if c.http == nil {
+		return nil, errors.New("chastisafe: client has no HTTP client")
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -206,12 +209,14 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 		return nil, fmt.Errorf("chastisafe: %s %s returned more than %d bytes", method, path, limit)
 	}
 
-	c.log.Debug("chastisafe request",
-		"method", method,
-		"path", path,
-		"status", resp.StatusCode,
-		"duration", time.Since(start),
-	)
+	if c.log != nil {
+		c.log.Debug("chastisafe request",
+			"method", method,
+			"path", path,
+			"status", resp.StatusCode,
+			"duration", time.Since(start),
+		)
+	}
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, newAPIError(method+" "+path, resp.StatusCode, resp.Header, data)
