@@ -68,6 +68,44 @@ for _, lock := range locks {
 `Client` is bound to one account. `WithToken` shares the HTTP client with a
 different account, which is useful for a multi-member Discord bot.
 
+## Primitive and service layers
+
+`Client` is the primitive layer. It maps one method to one endpoint and keeps
+the API's raw shapes.
+
+`Service` is the convenience layer for a bot. It adds short-lived caches,
+reference resolution, typed drafts, and higher-level operations:
+
+```go
+service := chastisafe.NewService(client)
+
+template, err := service.ResolveTemplate(ctx, "Steel")
+description := "Updated description"
+updated, err := service.UpdateTemplate(ctx, template.ID.String(), chastisafe.TemplatePatch{
+    Description: &description,
+})
+
+view, err := service.Lock(ctx, "Steel")
+detail := chastisafe.LockDetailText(view)
+```
+
+`Service` resolves templates by ID, exact name, or unique prefix. Locks resolve
+by ID, lock name, lockee name, keyholder name, or unique prefix. Ambiguous
+references return `ErrRefAmbiguous` with the candidate labels.
+
+Typed helpers:
+
+- `TemplateDraft` builds the large create payload ChastiSafe expects.
+- `TemplatePatch` sends only the fields a caller sets.
+- `LockSettingsPatch` converts typed durations into the units `KeyholderSettings` uses.
+- `LockFilter` and `LockView` select running locks and attach the caller's role.
+- `ParseDuration`, `ParseCards`, and `ParsePurposes` handle Discord option text.
+- `LocksText`, `TemplateDetailText`, `LockListText`, `LockDetailText`, and
+  `ProfileText` render text without combinations or passcodes.
+
+Caches last 20 seconds by default. Every write invalidates the relevant cache.
+Call `Service.Invalidate` after an account change such as a new login.
+
 ## Stats leaderboard
 
 `Leaderboard` reads the public `#stats` page. The criteria are `Chastity`,
