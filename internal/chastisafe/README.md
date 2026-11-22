@@ -66,6 +66,31 @@ for _, lock := range locks {
 `Client` is bound to one account. `WithToken` shares the HTTP client with a
 different account, which is useful for a multi-member Discord bot.
 
+## Stats leaderboard
+
+`Leaderboard` reads the public `#stats` page. The criteria are `Chastity`,
+`Task`, `Bondage`, `Loyalty` and `Total`:
+
+```go
+rows, err := client.Leaderboard(ctx, chastisafe.StatsChastity)
+for _, row := range rows {
+    fmt.Println(row.Name, row.ChastityLocks, row.TotalLocks, row.Visible)
+}
+```
+
+`Visible` is the account's public-profile flag. The endpoint includes hidden
+profiles, so filter on `Visible` when the bot should only show public accounts.
+
+## Public profiles
+
+`ProfileFor` reads `/profile/{user}`. It accepts a numeric ChastiSafe user ID
+or a bare username, and strips the `#0` discriminator from usernames.
+
+If the requested account has hidden its profile, ChastiSafe returns the
+caller's own profile instead of an error. `ProfileFor` detects that and returns
+`ErrProfileNotPublic`, so the bot does not accidentally present the caller's
+stats as someone else's.
+
 ## Units
 
 The API mixes seconds and minutes.
@@ -113,6 +138,7 @@ Read:
 | GET | `/lockees` | Active locks of this account's lockees |
 | GET | `/lockee/{id}` | One lockee's active lock |
 | GET | `/recent` | Completed lock history |
+| GET | `/stats/{criterion}` | Public stats leaderboard |
 | POST | `/log` | Lock event log |
 | GET | `/tasks`, `/task/{id}` | Task rollers |
 | GET | `/taskstatus/{lock}` | Task state for a lock |
@@ -176,6 +202,8 @@ Checked against a live account:
 
 - header authentication with `chastisafedev`
 - `/who`, `/profile`, `/locks`, `/loaded`, `/recent`
+- `/stats/{criterion}` leaderboard
+- `/profile/{id}` public profiles, including hidden-profile detection
 - `POST /load` returns `{"locks":[...]}`
 - `GET /open/{id}` opens a ready lock and returns its code
 - `GET /abandon/{id}` ends a lock
@@ -228,7 +256,8 @@ keyholder writes with `locknotfound`.
 - `requiredgreens` values above 1000 mean "all greens". Values of 1000 or less
   mean a fixed number of greens.
 - `GET /profile/{user}` accepts a numeric user ID or a bare username. Strip the
-  `#0` discriminator before building the path.
+  `#0` discriminator before building the path. A hidden profile returns the
+  caller's profile with a different ID, which `ProfileFor` rejects.
 
 ## Integration tests
 

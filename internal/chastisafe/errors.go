@@ -12,12 +12,13 @@ import (
 
 // Sentinel errors. Use errors.Is on any error returned by this package.
 var (
-	ErrUnauthorized    = errors.New("chastisafe: unauthorized")
-	ErrLockNotFound    = errors.New("chastisafe: lock not found")
-	ErrLockNotReady    = errors.New("chastisafe: lock is not ready")
-	ErrNotKeyholder    = errors.New("chastisafe: caller is not the keyholder")
-	ErrNotAllowed      = errors.New("chastisafe: action is not allowed")
-	ErrInvalidResponse = errors.New("chastisafe: invalid API response")
+	ErrUnauthorized     = errors.New("chastisafe: unauthorized")
+	ErrLockNotFound     = errors.New("chastisafe: lock not found")
+	ErrLockNotReady     = errors.New("chastisafe: lock is not ready")
+	ErrNotKeyholder     = errors.New("chastisafe: caller is not the keyholder")
+	ErrNotAllowed       = errors.New("chastisafe: action is not allowed")
+	ErrProfileNotPublic = errors.New("chastisafe: profile is not public")
+	ErrInvalidResponse  = errors.New("chastisafe: invalid API response")
 )
 
 // APIError is an error response from ChastiSafe. The server often returns

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -34,9 +35,37 @@ func (c *Client) Profile(ctx context.Context) (*Profile, error) {
 	return c.profile(ctx, "/profile")
 }
 
-// ProfileFor returns another account's public profile.
+// ProfileFor returns another account's public profile. ChastiSafe returns the
+// caller's own profile when the requested account has hidden its profile, so
+// ProfileFor verifies the returned account and returns ErrProfileNotPublic in
+// that case.
 func (c *Client) ProfileFor(ctx context.Context, user string) (*Profile, error) {
-	return c.profile(ctx, "/profile/"+url.PathEscape(userKey(user)))
+	key := userKey(user)
+	if key == "" {
+		return nil, fmt.Errorf("chastisafe: profile user is empty")
+	}
+	profile, err := c.profile(ctx, "/profile/"+url.PathEscape(key))
+	if err != nil {
+		return nil, err
+	}
+	if !profileMatchesKey(profile, key) {
+		return nil, fmt.Errorf("%w: requested %s, got %s", ErrProfileNotPublic, key, profile.ID)
+	}
+	return profile, nil
+}
+
+func profileMatchesKey(profile *Profile, key string) bool {
+	if profile == nil {
+		return false
+	}
+	if _, err := strconv.ParseUint(key, 10, 64); err == nil {
+		return profile.ID.String() == key
+	}
+	got := strings.TrimSpace(profile.User)
+	if index := strings.IndexByte(got, '#'); index > 0 {
+		got = got[:index]
+	}
+	return strings.EqualFold(got, key)
 }
 
 func (c *Client) profile(ctx context.Context, path string) (*Profile, error) {

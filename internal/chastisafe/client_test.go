@@ -505,6 +505,78 @@ func TestHTTPError(t *testing.T) {
 	}
 }
 
+func TestLeaderboard(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/stats/Chastity" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		_, _ = w.Write(fixture(t, "leaderboard.json"))
+	})
+	rows, err := client.Leaderboard(context.Background(), StatsChastity)
+	if err != nil {
+		t.Fatalf("Leaderboard: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("rows = %d", len(rows))
+	}
+	if rows[0].ID != "111" || rows[1].ID != "333" || rows[2].ID != "222" {
+		t.Fatalf("order = %s, %s, %s", rows[0].ID, rows[1].ID, rows[2].ID)
+	}
+	if rows[0].Value(StatsChastity) != 1186 || rows[2].Value(StatsTask) != 1608 {
+		t.Fatalf("values = %+v", rows)
+	}
+}
+
+func TestLeaderboardCanonicalCriterion(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/stats/Task" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		_, _ = w.Write(fixture(t, "leaderboard.json"))
+	})
+	rows, err := client.Leaderboard(context.Background(), StatsCriterion("task"))
+	if err != nil {
+		t.Fatalf("Leaderboard: %v", err)
+	}
+	if rows[0].Value(StatsTask) != 1608 {
+		t.Fatalf("first task value = %d", rows[0].Value(StatsTask))
+	}
+	if _, err := client.Leaderboard(context.Background(), "nope"); err == nil {
+		t.Fatal("Leaderboard accepted an unknown criterion")
+	}
+}
+
+func TestProfileFor(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/profile/616062132982906886" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		_, _ = w.Write(fixture(t, "public_profile.json"))
+	})
+	profile, err := client.ProfileFor(context.Background(), "616062132982906886")
+	if err != nil {
+		t.Fatalf("ProfileFor: %v", err)
+	}
+	if profile.User != "sir450#0" || profile.ID != "616062132982906886" {
+		t.Fatalf("profile = %+v", profile)
+	}
+	if profile.KeyholderLevels["chastityLevel"] != "Established" {
+		t.Fatalf("keyholder levels = %+v", profile.KeyholderLevels)
+	}
+}
+
+func TestProfileForRejectsFallbackProfile(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/profile/999" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"user":"me#0","id":"123","status":0}`)
+	})
+	if _, err := client.ProfileFor(context.Background(), "999"); !errors.Is(err, ErrProfileNotPublic) {
+		t.Fatalf("ProfileFor error = %v, want ErrProfileNotPublic", err)
+	}
+}
+
 func TestRecentAndLog(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

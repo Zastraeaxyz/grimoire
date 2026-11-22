@@ -54,6 +54,50 @@ func TestIntegrationRead(t *testing.T) {
 		t.Fatalf("Recent: %v", err)
 	}
 	t.Logf("recent: %d", len(recent))
+
+	leaderboard, err := client.Leaderboard(ctx, StatsChastity)
+	if err != nil {
+		t.Fatalf("Leaderboard: %v", err)
+	}
+	if len(leaderboard) == 0 {
+		t.Fatal("Leaderboard returned no rows")
+	}
+	t.Logf("leaderboard: %d rows, first %s with %d chastity locks", len(leaderboard), leaderboard[0].Name, leaderboard[0].ChastityLocks)
+
+	var publicID string
+	for _, row := range leaderboard {
+		if row.Visible {
+			publicID = row.ID.String()
+			break
+		}
+	}
+	if publicID != "" {
+		publicProfile, err := client.ProfileFor(ctx, publicID)
+		if err != nil {
+			t.Fatalf("ProfileFor: %v", err)
+		}
+		if publicProfile.User == "" {
+			t.Fatal("ProfileFor returned no user")
+		}
+		t.Logf("public profile: %s keyholder levels=%v", publicProfile.User, publicProfile.KeyholderLevels)
+	}
+
+	for _, row := range leaderboard {
+		if row.Visible {
+			continue
+		}
+		if _, err := client.ProfileFor(ctx, row.ID.String()); !errors.Is(err, ErrProfileNotPublic) {
+			t.Fatalf("ProfileFor private %s error = %v, want ErrProfileNotPublic", row.ID, err)
+		}
+		t.Logf("private profile %s correctly rejected", row.ID)
+		break
+	}
+
+	specificProfile, err := client.ProfileFor(ctx, "616062132982906886")
+	if err != nil {
+		t.Fatalf("ProfileFor specific: %v", err)
+	}
+	t.Logf("specific profile: %s levels=%v keyholder levels=%v", specificProfile.User, specificProfile.Levels, specificProfile.KeyholderLevels)
 }
 
 // TestIntegrationTemplateLifecycle creates and removes a test template. It is
