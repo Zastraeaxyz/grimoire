@@ -585,13 +585,17 @@ func (c *Client) CreateTemplate(ctx context.Context, spec map[string]any) error 
 // an error; call Template to read the result.
 func (c *Client) UpdateTemplate(ctx context.Context, spec map[string]any) error {
 	const op = "POST /updatetemplate"
-	if _, ok := spec["templateId"]; !ok {
-		if id, ok := spec["id"]; ok {
-			spec["templateId"] = id
-			delete(spec, "id")
+	payload := make(map[string]any, len(spec)+1)
+	for key, value := range spec {
+		payload[key] = value
+	}
+	if _, ok := payload["templateId"]; !ok {
+		if id, ok := payload["id"]; ok {
+			payload["templateId"] = id
+			delete(payload, "id")
 		}
 	}
-	body, err := c.post(ctx, "/updatetemplate", spec)
+	body, err := c.post(ctx, "/updatetemplate", payload)
 	if err != nil {
 		return err
 	}
@@ -604,8 +608,12 @@ func (c *Client) UpdateTemplate(ctx context.Context, spec map[string]any) error 
 // DeleteTemplate deletes a lock template.
 func (c *Client) DeleteTemplate(ctx context.Context, templateID ID) error {
 	const op = "GET /delete/{id}"
-	if _, err := c.get(ctx, "/delete/"+url.PathEscape(templateID.String())); err != nil {
+	body, err := c.get(ctx, "/delete/"+url.PathEscape(templateID.String()))
+	if err != nil {
 		return err
+	}
+	if present, ok, reason := statusOf(body); present && (!ok || reason != "") {
+		return newAPIError(op, 200, nil, body)
 	}
 	return nil
 }

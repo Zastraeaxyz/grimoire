@@ -104,6 +104,16 @@ func TestPurposeMask(t *testing.T) {
 	}
 }
 
+func TestCardUnmarshalNormalizes(t *testing.T) {
+	var card Card
+	if err := json.Unmarshal([]byte(`"yellow"`), &card); err != nil {
+		t.Fatalf("unmarshal card: %v", err)
+	}
+	if card != CardYellow {
+		t.Fatalf("card = %q", card)
+	}
+}
+
 func TestCardLabels(t *testing.T) {
 	if CardGreen.Label() != "Green card" {
 		t.Fatalf("green label = %q", CardGreen.Label())

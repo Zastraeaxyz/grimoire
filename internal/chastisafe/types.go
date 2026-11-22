@@ -281,6 +281,15 @@ var letterCards = map[byte]Card{
 	'o': CardGoAgain,
 }
 
+func (c *Card) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*c = NormalizeCard(value)
+	return nil
+}
+
 // NormalizeCard uppercases a card name and maps the app's lowercase yellow
 // alias to YELLOW.
 func NormalizeCard(value string) Card {
