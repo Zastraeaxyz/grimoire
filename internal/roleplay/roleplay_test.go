@@ -437,7 +437,7 @@ func TestConverseRunsTools(t *testing.T) {
 	}}
 	f.chat = chat
 
-	reply, err := f.converse(context.Background(), "sys", []ai.Message{{Role: "user", Content: "am I locked?"}}, "user-1")
+	reply, err := f.converse(context.Background(), "sys", []ai.Message{{Role: "user", Content: "am I locked?"}}, "user-1", nil, nil)
 	if err != nil {
 		t.Fatalf("converse: %v", err)
 	}
@@ -470,7 +470,7 @@ func TestConverseStopsAfterToolLimit(t *testing.T) {
 	chat := &fakeChat{replies: []ai.Reply{toolReply, toolReply, {Text: "Enough."}}}
 	f.chat = chat
 
-	reply, err := f.converse(context.Background(), "sys", []ai.Message{{Role: "user", Content: "hi"}}, "user-1")
+	reply, err := f.converse(context.Background(), "sys", []ai.Message{{Role: "user", Content: "hi"}}, "user-1", nil, nil)
 	if err != nil {
 		t.Fatalf("converse: %v", err)
 	}

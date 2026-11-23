@@ -89,6 +89,7 @@ func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordg
 
 	system := f.systemPrompt()
 	started := time.Now()
+	target := f.captionTarget(m, referenced)
 
 	f.log.Info("roleplay request",
 		"guild_id", m.GuildID,
@@ -96,7 +97,7 @@ func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordg
 		"user_id", m.Author.ID,
 		"history", len(history),
 	)
-	reply, err := f.converse(ctx, system, messages, m.Author.ID)
+	reply, err := f.converse(ctx, system, messages, m.Author.ID, s, target)
 	if err != nil {
 		f.log.Error("roleplay model request failed",
 			"err", err,
@@ -129,9 +130,15 @@ const maxToolRounds = 2
 
 // converse runs the model, executes any tool calls, and sends the results
 // back. The final answer is a normal text reply.
-func (f *Feature) converse(ctx context.Context, system string, messages []ai.Message, userID string) (ai.Reply, error) {
+func (f *Feature) converse(ctx context.Context, system string, messages []ai.Message, userID string, s *discordgo.Session, target *captionTarget) (ai.Reply, error) {
+	tools := f.tools
+	if target != nil {
+		tools = append(append([]ai.Tool(nil), f.tools...), captionReactTool())
+	}
+	reacted := false
+
 	for round := 0; round < maxToolRounds; round++ {
-		reply, err := f.chat.ChatWithTools(ctx, system, messages, f.tools)
+		reply, err := f.chat.ChatWithTools(ctx, system, messages, tools)
 		if err != nil {
 			return ai.Reply{}, err
 		}
@@ -145,7 +152,18 @@ func (f *Feature) converse(ctx context.Context, system string, messages []ai.Mes
 			ToolCalls: reply.ToolCalls,
 		})
 		for _, call := range reply.ToolCalls {
-			result := f.runTool(ctx, userID, call.Function.Name, call.Function.Arguments)
+			var result string
+			switch {
+			case call.Function.Name == captionReactToolName:
+				if reacted {
+					result = "You already reacted to this caption."
+				} else {
+					result = f.reactToCaption(s, target, call.Function.Arguments)
+					reacted = true
+				}
+			default:
+				result = f.runTool(ctx, userID, call.Function.Name, call.Function.Arguments)
+			}
 			f.log.Info("roleplay tool call",
 				"tool", call.Function.Name,
 				"user_id", userID,
