@@ -244,11 +244,12 @@ func TestStatusForNoKeyholder(t *testing.T) {
 	}
 }
 
-func TestBasePromptIncludesToolGuidance(t *testing.T) {
+func TestSystemPromptIncludesToolGuidance(t *testing.T) {
 	f := testFeature(t, &fakeLocks{})
+	prompt := f.systemPrompt("user-1", "alice")
 	for _, want := range []string{"chastity_status", "chastity_punish", "chastity_freeze", "cannot unlock a lock"} {
-		if !strings.Contains(f.basePrompt, want) {
-			t.Fatalf("base prompt = %q, want %q", f.basePrompt, want)
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("system prompt = %q, want %q", prompt, want)
 		}
 	}
 }
@@ -259,8 +260,8 @@ func TestBasePromptWithoutChastity(t *testing.T) {
 		SystemPrompt: "You are {{bot}}.",
 		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
-	if strings.Contains(strings.ToLower(f.basePrompt), "chastity") {
-		t.Fatalf("base prompt mentions chastity without the tool: %q", f.basePrompt)
+	if strings.Contains(strings.ToLower(f.personaText()), "chastity") {
+		t.Fatalf("persona mentions chastity without the tool: %q", f.personaText())
 	}
 	if len(f.tools) != 0 {
 		t.Fatalf("tools = %+v, want none", f.tools)
@@ -272,7 +273,7 @@ func TestSystemPromptHasTimeAndNoStatus(t *testing.T) {
 	f := testFeature(t, source)
 	f.now = func() time.Time { return time.Unix(1795222140, 0) }
 
-	prompt := f.systemPrompt()
+	prompt := f.systemPrompt("user-1", "alice")
 	if !strings.HasPrefix(prompt, "You are Mistress.") {
 		t.Fatalf("prompt = %q", prompt)
 	}

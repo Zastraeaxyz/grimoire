@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -94,6 +95,18 @@ type RoleplayConfig struct {
 	VisionMaxImageMB int
 	VisionDetail     string
 
+	// Memory and SOUL persistence live on the data volume.
+	MemoryEnabled      bool
+	MemoryDir          string
+	MemoryMaxChars     int
+	MemoryContextChars int
+	MemoryTimeout      time.Duration
+	SoulMaxChars       int
+	LearningTTL        time.Duration
+	LearningTimeout    time.Duration
+	AuxModel           string
+	AuxMaxTokens       int
+
 	// Punishment scales added lock time for a broken rule.
 	PunishPercent int
 	PunishMin     time.Duration
@@ -145,7 +158,7 @@ func Load() (*Config, error) {
 		},
 	}
 
-	roleplay, err := loadRoleplay()
+	roleplay, err := loadRoleplay(cfg.DatabasePath)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +200,7 @@ const defaultOpenRouterModel = "deepseek/deepseek-v4.1-flash-1017"
 
 // loadRoleplay reads the optional second bot configuration. Every value has a
 // safe default except the token, the lockee role, and the OpenRouter key.
-func loadRoleplay() (RoleplayConfig, error) {
+func loadRoleplay(databasePath string) (RoleplayConfig, error) {
 	chastityEnabled, err := envBool("ROLEPLAY_CHASTITY_ENABLED", true)
 	if err != nil {
 		return RoleplayConfig{}, err
@@ -241,28 +254,74 @@ func loadRoleplay() (RoleplayConfig, error) {
 	if err != nil {
 		return RoleplayConfig{}, err
 	}
+	memoryEnabled, err := envBool("ROLEPLAY_MEMORY_ENABLED", true)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	memoryMaxChars, err := envInt("ROLEPLAY_MEMORY_MAX_CHARS", 3000)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	memoryContextChars, err := envInt("ROLEPLAY_MEMORY_CONTEXT_MAX_CHARS", 2500)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	memoryTimeout, err := envDuration("ROLEPLAY_MEMORY_TIMEOUT_SECONDS", 30*time.Second)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	soulMaxChars, err := envInt("ROLEPLAY_SOUL_MAX_CHARS", 8000)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	learningMinutes, err := envInt("ROLEPLAY_LEARNING_SESSION_MINUTES", 60)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	learningTimeout, err := envDuration("ROLEPLAY_LEARNING_TIMEOUT_SECONDS", 60*time.Second)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	auxMaxTokens, err := envInt("ROLEPLAY_AUX_MAX_TOKENS", 4096)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	memoryDir := strings.TrimSpace(os.Getenv("ROLEPLAY_MEMORY_DIR"))
+	if memoryDir == "" {
+		memoryDir = filepath.Join(filepath.Dir(databasePath), "roleplay")
+	}
 
 	return RoleplayConfig{
-		Token:            strings.TrimSpace(os.Getenv("DISCORD_ROLEPLAY_TOKEN")),
-		GuildID:          roleplayGuildID(),
-		BotName:          envOr("ROLEPLAY_BOT_NAME", "Keyholder"),
-		LockeeRoleID:     strings.TrimSpace(os.Getenv("ROLEPLAY_LOCKEE_ROLE_ID")),
-		SystemPromptFile: envOr("ROLEPLAY_SYSTEM_PROMPT_FILE", "./prompts/keyholder.md"),
-		SystemPrompt:     strings.TrimSpace(os.Getenv("ROLEPLAY_SYSTEM_PROMPT")),
-		AboutFile:        envOr("ROLEPLAY_ABOUT_FILE", "./prompts/about.md"),
-		ContextMessages:  contextMessages,
-		MaxChunks:        maxChunks,
-		Timeout:          timeout,
-		MaxConcurrent:    maxConcurrent,
-		RateLimitCount:   rateLimitCount,
-		RateLimitWindow:  rateLimitWindow,
-		PunishPercent:    punishPercent,
-		PunishMin:        time.Duration(punishMinMinutes) * time.Minute,
-		PunishMax:        time.Duration(punishMaxMinutes) * time.Minute,
-		VisionEnabled:    visionEnabled,
-		VisionMaxImages:  visionMaxImages,
-		VisionMaxImageMB: visionMaxImageMB,
-		VisionDetail:     envOr("ROLEPLAY_VISION_DETAIL", "auto"),
+		Token:              strings.TrimSpace(os.Getenv("DISCORD_ROLEPLAY_TOKEN")),
+		GuildID:            roleplayGuildID(),
+		BotName:            envOr("ROLEPLAY_BOT_NAME", "Keyholder"),
+		LockeeRoleID:       strings.TrimSpace(os.Getenv("ROLEPLAY_LOCKEE_ROLE_ID")),
+		SystemPromptFile:   envOr("ROLEPLAY_SYSTEM_PROMPT_FILE", "./prompts/keyholder.md"),
+		SystemPrompt:       strings.TrimSpace(os.Getenv("ROLEPLAY_SYSTEM_PROMPT")),
+		AboutFile:          envOr("ROLEPLAY_ABOUT_FILE", "./prompts/about.md"),
+		ContextMessages:    contextMessages,
+		MaxChunks:          maxChunks,
+		Timeout:            timeout,
+		MaxConcurrent:      maxConcurrent,
+		RateLimitCount:     rateLimitCount,
+		RateLimitWindow:    rateLimitWindow,
+		PunishPercent:      punishPercent,
+		PunishMin:          time.Duration(punishMinMinutes) * time.Minute,
+		PunishMax:          time.Duration(punishMaxMinutes) * time.Minute,
+		VisionEnabled:      visionEnabled,
+		VisionMaxImages:    visionMaxImages,
+		VisionMaxImageMB:   visionMaxImageMB,
+		VisionDetail:       envOr("ROLEPLAY_VISION_DETAIL", "auto"),
+		MemoryEnabled:      memoryEnabled,
+		MemoryDir:          memoryDir,
+		MemoryMaxChars:     memoryMaxChars,
+		MemoryContextChars: memoryContextChars,
+		MemoryTimeout:      memoryTimeout,
+		SoulMaxChars:       soulMaxChars,
+		LearningTTL:        time.Duration(learningMinutes) * time.Minute,
+		LearningTimeout:    learningTimeout,
+		AuxModel:           strings.TrimSpace(os.Getenv("ROLEPLAY_AUX_MODEL")),
+		AuxMaxTokens:       auxMaxTokens,
 		Chastity: ChastityConfig{
 			Enabled:       chastityEnabled,
 			KeyholderCode: strings.TrimSpace(os.Getenv("CHASTISAFE_KEYHOLDER_CODE")),

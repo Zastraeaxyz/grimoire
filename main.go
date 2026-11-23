@@ -197,6 +197,46 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 		return fmt.Errorf("building the roleplay chat client: %w", err)
 	}
 
+	auxModel := strings.TrimSpace(rp.AuxModel)
+	if auxModel == "" {
+		auxModel = cfg.OpenRouterModel
+	}
+	auxChat, auxErr := ai.New(ai.Options{
+		APIKey:    cfg.OpenRouterAPIKey,
+		BaseURL:   cfg.OpenRouterBaseURL,
+		Model:     auxModel,
+		AppName:   "Grimoire",
+		MaxTokens: rp.AuxMaxTokens,
+		Timeout:   rp.LearningTimeout,
+	})
+	if auxErr != nil {
+		log.Warn("roleplay memory and learning disabled", "err", auxErr)
+	}
+
+	soul, err := roleplay.NewSoul(
+		filepath.Join(rp.MemoryDir, "SOUL.md"),
+		prompt,
+		rp.BotName,
+		rp.SoulMaxChars,
+		time.Now,
+	)
+	if err != nil {
+		return fmt.Errorf("loading the roleplay SOUL: %w", err)
+	}
+
+	var memory *roleplay.MemoryStore
+	if rp.MemoryEnabled {
+		memory, err = roleplay.NewMemoryStore(
+			filepath.Join(rp.MemoryDir, "memory"),
+			rp.MemoryMaxChars,
+			rp.MemoryContextChars,
+			time.Now,
+		)
+		if err != nil {
+			return fmt.Errorf("opening roleplay memory: %w", err)
+		}
+	}
+
 	var (
 		locks     roleplay.LockService
 		keyholder *chastisafe.Identity
@@ -265,6 +305,13 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 		VisionMaxImages:  rp.VisionMaxImages,
 		VisionMaxImageMB: rp.VisionMaxImageMB,
 		VisionDetail:     rp.VisionDetail,
+		Soul:             soul,
+		Memory:           memory,
+		AuxChat:          auxChat,
+		MemoryTimeout:    rp.MemoryTimeout,
+		SoulMaxChars:     rp.SoulMaxChars,
+		LearningTTL:      rp.LearningTTL,
+		LearningTimeout:  rp.LearningTimeout,
 		Chat:             chat,
 		Locks:            locks,
 		Keyholder:        keyholder,
@@ -279,6 +326,9 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 		"name", rp.BotName,
 		"model", cfg.OpenRouterModel,
 		"chastity", locks != nil,
+		"memory", memory != nil,
+		"learning", auxChat != nil,
+		"memory_dir", rp.MemoryDir,
 	)
 	go func() {
 		if err := b.Run(ctx); err != nil {

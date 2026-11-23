@@ -37,6 +37,10 @@ func (f *Feature) handleMessage(ctx context.Context, s *discordgo.Session, m *di
 		return nil
 	}
 
+	if session, ok := f.learning.active(m.ChannelID, m.Author.ID); ok {
+		return f.handleLearning(ctx, s, m, session)
+	}
+
 	mentioned := mentionsUser(m, botID)
 	referenced := m.ReferencedMessage
 	replyToBot := referenced != nil && referenced.Author != nil && referenced.Author.ID == botID
@@ -87,7 +91,7 @@ func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordg
 		return nil
 	}
 
-	system := f.systemPrompt()
+	system := f.systemPrompt(m.Author.ID, displayName(m.Author))
 	started := time.Now()
 	target := f.captionTarget(m, referenced)
 
@@ -118,11 +122,30 @@ func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordg
 	)
 
 	f.send(s, m, reply.Text, f.maxChunks)
+	f.captureMemory(m.Author.ID, displayName(m.Author), memoryTranscript(messages, reply.Text))
 	return nil
 }
 
-func (f *Feature) systemPrompt() string {
-	return f.basePrompt + fmt.Sprintf("\n\nCurrent Unix time: %d.", f.now().Unix())
+func (f *Feature) personaText() string {
+	if f.soul != nil {
+		return f.soul.Text()
+	}
+	return f.basePrompt
+}
+
+func (f *Feature) systemPrompt(userID, name string) string {
+	parts := []string{f.personaText()}
+	if f.memory != nil {
+		if block := f.memory.context(userID, name); block != "" {
+			parts = append(parts, block)
+		}
+	}
+	parts = append(parts, safetyPrompt)
+	if f.locks != nil {
+		parts = append(parts, chastityGuidance)
+	}
+	parts = append(parts, fmt.Sprintf("Current Unix time: %d.", f.now().Unix()))
+	return strings.Join(parts, "\n\n")
 }
 
 // maxToolRounds caps a chain of tool calls so a confused model cannot loop.

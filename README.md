@@ -40,9 +40,10 @@ Discord bot for the zxyz server, built on
   [Stats reports](#stats-reports).
 - **Roleplay keyholder**: an optional second Discord bot with its own token,
   its own persona, and its own commands. It answers mentions and replies, reads
-  image attachments, judges the captions members bring her, and can check a
-  member's ChastiSafe lock status as a tool. See
-  [Roleplay bot](#roleplay-bot).
+  image attachments, judges the captions members bring her, remembers each
+  person and the server, and can check a member's ChastiSafe lock status as a
+  tool. Admins can teach her new behavior with `/learn` without a deployment.
+  See [Roleplay bot](#roleplay-bot).
 - **Member ChastiSafe access**: `/cs` links a member's own ChastiSafe
   developer code and exposes their account, profiles, lock templates, and
   running locks. Members can create, inspect, update, and delete templates, and
@@ -77,8 +78,11 @@ Discord bot for the zxyz server, built on
 - `/cs locks` - list running locks
 - `/cs lock view|load|addtime|settime|freeze|hide|purpose|cards|settings|unlock|reset|abandon|split` - manage running locks
 - `/about` - ask Raven to introduce herself (roleplay bot)
+- `/memory view|forget|list` - view or forget your memory, or list memory as an admin (roleplay bot)
+- `/learn start|stop|status` - teach Raven's SOUL in a private admin channel (roleplay bot admins)
+- `/soul undo|reset` - restore the previous SOUL or reset to the repository seed (roleplay bot admins)
 - `/chastity status` - show your ChastiSafe lock status (roleplay bot)
-- `/prompt` - show the persona system prompt (roleplay bot admins)
+- `/prompt` - show the live persona SOUL (roleplay bot admins)
 
 Feeds are polled once an hour. Each item is recorded in SQLite by GUID, so a
 restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
@@ -339,8 +343,12 @@ commands, system prompt, intents, and rate limits, and it stays offline when
 - It can check ChastiSafe lock status as a tool when the conversation calls
   for it. Status is not injected into every reply.
 - It can add time as a punishment and freeze or thaw a timed lock.
-- Exposes `/prompt` to admins so the persona can be reviewed and tuned.
-- It has no memory and no ability to change a lock yet.
+- It remembers each member and the server, with short-term and long-term notes
+  that compact themselves when they grow too long.
+- Its persona lives in a live `SOUL.md` on the data volume. `/learn` lets an
+  admin teach her new behavior and approve the SOUL change without a deploy.
+- Exposes `/prompt` to admins so the live SOUL can be reviewed.
+- Exposes `/memory view` so a member can see and delete what she remembers.
 - An incomplete roleplay configuration logs an error and leaves Grimoire running.
 
 Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
@@ -374,8 +382,8 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `ROLEPLAY_GUILD_ID` | no | all guilds the bot is in | Optional server lock |
 | `ROLEPLAY_BOT_NAME` | no | `Keyholder` | Name the persona uses in its prompt |
 | `ROLEPLAY_LOCKEE_ROLE_ID` | no | | Optional role gate; empty lets any member talk to the persona |
-| `ROLEPLAY_SYSTEM_PROMPT_FILE` | no | `./prompts/keyholder.md` | Persona prompt file |
-| `ROLEPLAY_SYSTEM_PROMPT` | no | | Inline persona override |
+| `ROLEPLAY_SYSTEM_PROMPT_FILE` | no | `./prompts/keyholder.md` | Seed for the live SOUL on first boot |
+| `ROLEPLAY_SYSTEM_PROMPT` | no | | Inline seed; the live SOUL wins after first boot |
 | `ROLEPLAY_ABOUT_FILE` | no | `./prompts/about.md` | Self introduction served by `/about` |
 | `ROLEPLAY_CONTEXT_MESSAGES` | no | `15` | Channel messages sent as context |
 | `ROLEPLAY_MAX_CHUNKS` | no | `3` | Largest reply, in Discord messages |
@@ -387,6 +395,16 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `ROLEPLAY_VISION_MAX_IMAGES` | no | `4` | Images sent per request |
 | `ROLEPLAY_VISION_MAX_IMAGE_MB` | no | `8` | Largest image the persona reads |
 | `ROLEPLAY_VISION_DETAIL` | no | `auto` | Image detail: `auto`, `low`, `high`, or `original` |
+| `ROLEPLAY_MEMORY_ENABLED` | no | `true` | Persistent per-member and server memory |
+| `ROLEPLAY_MEMORY_DIR` | no | `<database dir>/roleplay` | SOUL and memory directory; use a volume path |
+| `ROLEPLAY_MEMORY_MAX_CHARS` | no | `3000` | Memory file size before compaction |
+| `ROLEPLAY_MEMORY_CONTEXT_MAX_CHARS` | no | `2500` | Memory characters injected per request |
+| `ROLEPLAY_MEMORY_TIMEOUT_SECONDS` | no | `30` | Background memory capture timeout |
+| `ROLEPLAY_SOUL_MAX_CHARS` | no | `8000` | Largest editable SOUL |
+| `ROLEPLAY_LEARNING_SESSION_MINUTES` | no | `60` | Lifetime of a `/learn` session |
+| `ROLEPLAY_LEARNING_TIMEOUT_SECONDS` | no | `60` | Learning model request timeout |
+| `ROLEPLAY_AUX_MODEL` | no | main model | Model for memory, compaction, and learning |
+| `ROLEPLAY_AUX_MAX_TOKENS` | no | `4096` | Token cap for the auxiliary model |
 | `ROLEPLAY_PUNISH_PERCENT` | no | `5` | Percent of remaining time added per punishment |
 | `ROLEPLAY_PUNISH_MIN_MINUTES` | no | `30` | Smallest punishment |
 | `ROLEPLAY_PUNISH_MAX_MINUTES` | no | `240` | Largest punishment |

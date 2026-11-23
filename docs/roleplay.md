@@ -19,9 +19,14 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
 - Can check the caller's ChastiSafe lock status with a tool, only when locks or
   chastity are already part of the conversation.
 - Can add time as a punishment and freeze or thaw a timed lock.
+- Remembers each member and the server with short-term and long-term notes, and
+  compacts those files when they grow too long.
+- Runs from a live `SOUL.md` on the data volume. `/learn` lets an admin teach
+  new behavior and approve a SOUL change without a deployment.
+- Exposes `/memory view` and `/memory forget` so a member controls their own
+  memory.
 - Exposes `/chastity status` so a member can check their own lock privately.
-- Exposes `/prompt` to admins so the persona can be reviewed and tuned.
-- Uses no memory yet.
+- Exposes `/prompt` to admins so the live SOUL can be reviewed.
 
 ## Setup
 
@@ -34,8 +39,9 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
    Empty serves every guild it is invited to.
 6. Optionally create a lockee role and set `ROLEPLAY_LOCKEE_ROLE_ID` to its ID.
    Without it, any member can talk to the persona.
-7. Optionally edit `prompts/keyholder.md` and `prompts/about.md`. Both files are
-   copied into the image.
+7. Optionally edit `prompts/keyholder.md` and `prompts/about.md`. The SOUL file
+   is seeded from `keyholder.md` on first boot; after that the live
+   `SOUL.md` on the data volume wins.
 
 The persona needs its own Discord identity. The username and avatar live in the
 Discord Developer Portal, not in this repository.
@@ -80,8 +86,55 @@ text. She also writes captions on request and hands out themes for subs to hunt
 down. Captions stay consensual fiction and inside the limits of the people in
 the scene.
 
-The behavior lives in `prompts/keyholder.md`, so editing that file is the way to
-tune it.
+The behavior starts in `prompts/keyholder.md`. The live copy is `SOUL.md` on
+the data volume, and `/learn` edits that copy.
+
+## Memory and SOUL
+
+The live persona is `SOUL.md` on the data volume. `ROLEPLAY_MEMORY_DIR` defaults
+to `<database dir>/roleplay`, which is `/data/roleplay` on Railway. On first
+boot the file is seeded from `ROLEPLAY_SYSTEM_PROMPT_FILE` or the inline
+`ROLEPLAY_SYSTEM_PROMPT`. After that the volume copy wins, so learning edits
+survive deploys. `/soul reset` seeds it again from the repository file.
+
+Memory is markdown under the same directory:
+
+```
+SOUL.md
+SOUL-history/
+memory/server.md
+memory/users/<discord_id>.md
+memory/history/
+```
+
+Each member file has `## Long-term` and `## Short-term` sections. Long-term
+holds durable facts, preferences, limits, relationship state, and recurring
+themes. Short-term holds recent dated notes and open threads. After each reply a
+background clerk extracts a few key points and appends them. Full transcripts
+are never stored. When a file passes `ROLEPLAY_MEMORY_MAX_CHARS`, it is
+compacted into a shorter version and the old file is kept under
+`memory/history`.
+
+The current member's memory and the shared server memory are added to the system
+prompt as reference data, never as instructions. `/memory view` shows a member
+their own file. `/memory forget confirm:true` deletes it. Admins can target
+another member with the `user` option and list files with `/memory list`.
+
+## Learning mode
+
+Run `/learn start` in a private admin channel. The session lasts 60 minutes by
+default, and the developer can talk normally without mentioning the bot. Raven
+uses a meta prompt, discusses the lesson, and can call `soul_update` with a full
+revised SOUL. The bot posts the proposal with **Approve** and **Reject** buttons
+and attaches the proposed file.
+
+Approve writes `SOUL.md`, reloads it immediately, and keeps the previous version
+for `/soul undo`. Reject changes nothing. Sessions expire automatically and
+`/learn stop` ends one early.
+
+The safety rules are appended from code after the editable SOUL. Learning mode
+can change her voice, hobbies, and behavior, but it cannot remove consent,
+limits, safewords, or the rule against claiming power she does not have.
 
 ## ChastiSafe
 
@@ -129,8 +182,14 @@ no separate allowlist to maintain.
 | Command | Who | Result |
 | --- | --- | --- |
 | `/about` | Any member | Public dating-profile style introduction, including her caption hobby |
+| `/memory view` | Any member | Ephemeral copy of the caller's memory file |
+| `/memory forget` | Any member | Deletes the caller's memory after `confirm:true`; admins can target another member |
+| `/memory list` | Admins | Ephemeral list of memory files and sizes |
+| `/learn start`, `/learn stop`, `/learn status` | Admins | Interactive SOUL tuning session in the current channel |
+| `/soul undo` | Admins | Restores the previous SOUL version |
+| `/soul reset` | Admins | Resets the SOUL to the repository seed |
 | `/chastity status` | Any member | Ephemeral list of the caller's active locks, or connection instructions |
-| `/prompt` | Admins | Ephemeral copy of the persona prompt and runtime tool notes |
+| `/prompt` | Admins | Ephemeral copy of the live SOUL, safety rules, and tool guidance |
 | Mentions and replies | Any member allowed to talk to her | An in-character reply; lock status is available as a tool, not injected |
 
 Admins can run `/chastity status` because slash command permissions always allow
@@ -175,8 +234,8 @@ This version only touches timed locks, and only through three tools.
 | `ROLEPLAY_GUILD_ID` | all guilds | Optional server lock |
 | `ROLEPLAY_BOT_NAME` | `Keyholder` | Fills `{{bot}}` in the prompt |
 | `ROLEPLAY_LOCKEE_ROLE_ID` | | Optional role gate; empty allows any member |
-| `ROLEPLAY_SYSTEM_PROMPT_FILE` | `./prompts/keyholder.md` | Persona prompt |
-| `ROLEPLAY_SYSTEM_PROMPT` | | Inline override; wins over the file |
+| `ROLEPLAY_SYSTEM_PROMPT_FILE` | `./prompts/keyholder.md` | Seed for the live SOUL on first boot |
+| `ROLEPLAY_SYSTEM_PROMPT` | | Inline seed; the live SOUL wins after first boot |
 | `ROLEPLAY_ABOUT_FILE` | `./prompts/about.md` | Text served by `/about` |
 | `ROLEPLAY_CONTEXT_MESSAGES` | `15` | Channel history per request |
 | `ROLEPLAY_MAX_CHUNKS` | `3` | Reply split limit |
@@ -188,6 +247,16 @@ This version only touches timed locks, and only through three tools.
 | `ROLEPLAY_VISION_MAX_IMAGES` | `4` | Images per request |
 | `ROLEPLAY_VISION_MAX_IMAGE_MB` | `8` | Largest image read |
 | `ROLEPLAY_VISION_DETAIL` | `auto` | `auto`, `low`, `high`, or `original` |
+| `ROLEPLAY_MEMORY_ENABLED` | `true` | Persistent per-member and server memory |
+| `ROLEPLAY_MEMORY_DIR` | `<database dir>/roleplay` | SOUL and memory directory; must be on the volume |
+| `ROLEPLAY_MEMORY_MAX_CHARS` | `3000` | Memory file size before compaction |
+| `ROLEPLAY_MEMORY_CONTEXT_MAX_CHARS` | `2500` | Memory characters injected per request |
+| `ROLEPLAY_MEMORY_TIMEOUT_SECONDS` | `30` | Background memory capture timeout |
+| `ROLEPLAY_SOUL_MAX_CHARS` | `8000` | Largest editable SOUL |
+| `ROLEPLAY_LEARNING_SESSION_MINUTES` | `60` | Lifetime of a `/learn` session |
+| `ROLEPLAY_LEARNING_TIMEOUT_SECONDS` | `60` | Learning model request timeout |
+| `ROLEPLAY_AUX_MODEL` | main model | Model for memory, compaction, and learning |
+| `ROLEPLAY_AUX_MAX_TOKENS` | `4096` | Token cap for the auxiliary model |
 | `ROLEPLAY_PUNISH_PERCENT` | `5` | Percent of remaining time added per punishment |
 | `ROLEPLAY_PUNISH_MIN_MINUTES` | `30` | Smallest punishment |
 | `ROLEPLAY_PUNISH_MAX_MINUTES` | `240` | Largest punishment |

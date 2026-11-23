@@ -125,6 +125,11 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 		"ROLEPLAY_PUNISH_MAX_MINUTES", "ROLEPLAY_VISION_ENABLED",
 		"ROLEPLAY_VISION_MAX_IMAGES", "ROLEPLAY_VISION_MAX_IMAGE_MB",
 		"ROLEPLAY_VISION_DETAIL", "ROLEPLAY_ABOUT_FILE",
+		"ROLEPLAY_MEMORY_ENABLED", "ROLEPLAY_MEMORY_DIR", "ROLEPLAY_MEMORY_MAX_CHARS",
+		"ROLEPLAY_MEMORY_CONTEXT_MAX_CHARS", "ROLEPLAY_MEMORY_TIMEOUT_SECONDS",
+		"ROLEPLAY_SOUL_MAX_CHARS", "ROLEPLAY_LEARNING_SESSION_MINUTES",
+		"ROLEPLAY_LEARNING_TIMEOUT_SECONDS", "ROLEPLAY_AUX_MODEL",
+		"ROLEPLAY_AUX_MAX_TOKENS", "DATABASE_PATH",
 	} {
 		t.Setenv(key, "")
 	}
@@ -158,6 +163,60 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 	}
 	if cfg.Roleplay.AboutFile != "./prompts/about.md" {
 		t.Fatalf("AboutFile = %q", cfg.Roleplay.AboutFile)
+	}
+	if !cfg.Roleplay.MemoryEnabled ||
+		cfg.Roleplay.MemoryDir != "data/roleplay" ||
+		cfg.Roleplay.MemoryMaxChars != 3000 ||
+		cfg.Roleplay.MemoryContextChars != 2500 ||
+		cfg.Roleplay.MemoryTimeout != 30*time.Second ||
+		cfg.Roleplay.SoulMaxChars != 8000 ||
+		cfg.Roleplay.LearningTTL != time.Hour ||
+		cfg.Roleplay.LearningTimeout != 60*time.Second ||
+		cfg.Roleplay.AuxMaxTokens != 4096 {
+		t.Fatalf("memory defaults = %+v", cfg.Roleplay)
+	}
+}
+
+func TestLoadRoleplayMemoryDirFromDatabase(t *testing.T) {
+	t.Setenv("DISCORD_TOKEN", "token")
+	t.Setenv("GUILD_ID", "123")
+	t.Setenv("DATABASE_PATH", "/data/grimoire.db")
+	t.Setenv("ROLEPLAY_MEMORY_DIR", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Roleplay.MemoryDir != "/data/roleplay" {
+		t.Fatalf("MemoryDir = %q", cfg.Roleplay.MemoryDir)
+	}
+}
+
+func TestLoadRoleplayMemoryOverrides(t *testing.T) {
+	t.Setenv("DISCORD_TOKEN", "token")
+	t.Setenv("GUILD_ID", "123")
+	t.Setenv("ROLEPLAY_MEMORY_ENABLED", "false")
+	t.Setenv("ROLEPLAY_MEMORY_DIR", "/tmp/raven-memory")
+	t.Setenv("ROLEPLAY_MEMORY_MAX_CHARS", "1200")
+	t.Setenv("ROLEPLAY_MEMORY_CONTEXT_MAX_CHARS", "900")
+	t.Setenv("ROLEPLAY_SOUL_MAX_CHARS", "4000")
+	t.Setenv("ROLEPLAY_LEARNING_SESSION_MINUTES", "30")
+	t.Setenv("ROLEPLAY_AUX_MODEL", "test/model")
+	t.Setenv("ROLEPLAY_AUX_MAX_TOKENS", "2048")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Roleplay.MemoryEnabled ||
+		cfg.Roleplay.MemoryDir != "/tmp/raven-memory" ||
+		cfg.Roleplay.MemoryMaxChars != 1200 ||
+		cfg.Roleplay.MemoryContextChars != 900 ||
+		cfg.Roleplay.SoulMaxChars != 4000 ||
+		cfg.Roleplay.LearningTTL != 30*time.Minute ||
+		cfg.Roleplay.AuxModel != "test/model" ||
+		cfg.Roleplay.AuxMaxTokens != 2048 {
+		t.Fatalf("memory overrides = %+v", cfg.Roleplay)
 	}
 }
 

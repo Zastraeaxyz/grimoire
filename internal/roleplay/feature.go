@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"grimoire/internal/ai"
@@ -62,6 +63,15 @@ type Options struct {
 	PunishMin     time.Duration
 	PunishMax     time.Duration
 
+	// Soul, Memory, and AuxChat turn on persistent memory and learning.
+	Soul            *Soul
+	Memory          *MemoryStore
+	AuxChat         ChatClient
+	MemoryTimeout   time.Duration
+	SoulMaxChars    int
+	LearningTTL     time.Duration
+	LearningTimeout time.Duration
+
 	Chat      ChatClient
 	Locks     LockService
 	Keyholder *chastisafe.Identity
@@ -76,6 +86,20 @@ type Feature struct {
 	basePrompt   string
 	about        string
 	tools        []ai.Tool
+
+	soul            *Soul
+	soulSeed        string
+	memory          *MemoryStore
+	auxChat         ChatClient
+	memoryTimeout   time.Duration
+	memorySem       chan struct{}
+	soulMaxChars    int
+	learning        *learningManager
+	learningTTL     time.Duration
+	learningTimeout time.Duration
+
+	proposalsMu sync.Mutex
+	proposals   map[string]*soulProposal
 
 	contextMessages int
 	maxChunks       int
@@ -153,13 +177,22 @@ func New(opts Options) *Feature {
 	default:
 		opts.VisionDetail = "auto"
 	}
-
+	if opts.MemoryTimeout <= 0 {
+		opts.MemoryTimeout = 30 * time.Second
+	}
+	if opts.SoulMaxChars < 1 {
+		opts.SoulMaxChars = defaultSoulMaxChars
+	}
+	if opts.LearningTTL <= 0 {
+		opts.LearningTTL = 60 * time.Minute
+	}
+	if opts.LearningTimeout <= 0 {
+		opts.LearningTimeout = 60 * time.Second
+	}
 	now := time.Now
 	prompt := strings.ReplaceAll(opts.SystemPrompt, "{{bot}}", opts.BotName)
-	basePrompt := prompt
 	var tools []ai.Tool
 	if opts.Locks != nil {
-		basePrompt += "\n\n" + chastityGuidance
 		tools = chastityTools()
 	}
 
@@ -167,9 +200,19 @@ func New(opts Options) *Feature {
 		guildID:         opts.GuildID,
 		botName:         opts.BotName,
 		lockeeRoleID:    opts.LockeeRoleID,
-		basePrompt:      basePrompt,
+		basePrompt:      prompt,
 		about:           strings.TrimSpace(opts.About),
 		tools:           tools,
+		soul:            opts.Soul,
+		soulSeed:        opts.SystemPrompt,
+		memory:          opts.Memory,
+		auxChat:         opts.AuxChat,
+		memoryTimeout:   opts.MemoryTimeout,
+		soulMaxChars:    opts.SoulMaxChars,
+		learning:        newLearningManager(now),
+		learningTTL:     opts.LearningTTL,
+		learningTimeout: opts.LearningTimeout,
+		proposals:       make(map[string]*soulProposal),
 		contextMessages: opts.ContextMessages,
 		maxChunks:       opts.MaxChunks,
 		timeout:         opts.Timeout,
@@ -193,6 +236,9 @@ func New(opts Options) *Feature {
 		sent:          newSentCache(time.Hour, now),
 		now:           now,
 	}
+	if f.memory != nil && f.auxChat != nil {
+		f.memorySem = make(chan struct{}, 2)
+	}
 	return f
 }
 
@@ -207,13 +253,18 @@ func (f *Feature) Register(b *bot.Bot) {
 		b.AddPublicCommand(statusCommand(), f.handleStatusCommand)
 	}
 	b.AddCommand(promptCommand(), f.handlePromptCommand)
+	b.AddCommand(learningCommand(), f.handleLearningCommand)
+	b.AddCommand(soulCommand(), f.handleSoulCommand)
 	b.AddPublicCommand(aboutCommand(), f.handleAboutCommand)
+	b.AddPublicCommand(memoryCommand(), f.handleMemoryCommand)
+	b.AddComponent("soul", f.handleSoulComponent)
 	b.AddMessageHandler(f.handleMessage)
 }
 
 // String describes the feature without exposing any configuration secrets.
 func (f *Feature) String() string {
-	return fmt.Sprintf("roleplay(bot=%q, chastity=%t)", f.botName, f.locks != nil)
+	return fmt.Sprintf("roleplay(bot=%q, chastity=%t, memory=%t, learning=%t)",
+		f.botName, f.locks != nil, f.memory != nil, f.auxChat != nil)
 }
 
 func (f *Feature) acquire(ctx context.Context) (func(), error) {
