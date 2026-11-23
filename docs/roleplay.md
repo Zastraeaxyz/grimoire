@@ -11,6 +11,9 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
 - Answers when a member mentions it or replies to one of its messages.
 - Reads image attachments on the current message and on the message it replies
   to, so a member can show rather than describe.
+- Judges femdom, chastity, and cuckold captions, and writes them when a sub
+  asks. Captions are a hobby, not a special mode.
+- Exposes `/about` so anyone can meet her and learn what she enjoys.
 - Any member can talk to it by default. Setting the lockee role limits it to
   members with that role.
 - Can check the caller's ChastiSafe lock status with a tool, only when locks or
@@ -31,7 +34,8 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
    Empty serves every guild it is invited to.
 6. Optionally create a lockee role and set `ROLEPLAY_LOCKEE_ROLE_ID` to its ID.
    Without it, any member can talk to the persona.
-7. Optionally edit `prompts/keyholder.md`. The file is copied into the image.
+7. Optionally edit `prompts/keyholder.md` and `prompts/about.md`. Both files are
+   copied into the image.
 
 The persona needs its own Discord identity. The username and avatar live in the
 Discord Developer Portal, not in this repository.
@@ -54,6 +58,23 @@ The configured model must support vision. With a text-only slug the request
 fails and Raven answers that she lost her train of thought, so point
 `OPENROUTER_MODEL` at a vision-capable model. Turn the feature off with
 `ROLEPLAY_VISION_ENABLED=false`.
+
+## Captions
+
+Captions are part of her persona. Femdom, chastity, and cuckold captions are her
+hobby, and she treats them as craft. When a member shows her one, the prompt
+tells her to name the fantasy, quote the line that lands, judge the writing and
+the tease separately, and give the caption a score out of 10 with one or two
+notes that would sharpen it. Font and layout count when they are part of the
+image.
+
+Caption reviews may run four to six sentences, longer than her usual reply,
+because there is craft to discuss. She also writes captions on request and hands
+out themes for subs to hunt down. Captions stay consensual fiction and inside
+the limits of the people in the scene.
+
+The behavior lives in `prompts/keyholder.md`, so editing that file is the way to
+tune it.
 
 ## ChastiSafe
 
@@ -100,6 +121,7 @@ no separate allowlist to maintain.
 
 | Command | Who | Result |
 | --- | --- | --- |
+| `/about` | Any member | Public introduction in her voice, including her caption hobby |
 | `/chastity status` | Any member | Ephemeral list of the caller's active locks, or connection instructions |
 | `/prompt` | Admins | Ephemeral copy of the persona prompt and runtime tool notes |
 | Mentions and replies | Any member allowed to talk to her | An in-character reply; lock status is available as a tool, not injected |
@@ -148,6 +170,7 @@ This version only touches timed locks, and only through three tools.
 | `ROLEPLAY_LOCKEE_ROLE_ID` | | Optional role gate; empty allows any member |
 | `ROLEPLAY_SYSTEM_PROMPT_FILE` | `./prompts/keyholder.md` | Persona prompt |
 | `ROLEPLAY_SYSTEM_PROMPT` | | Inline override; wins over the file |
+| `ROLEPLAY_ABOUT_FILE` | `./prompts/about.md` | Text served by `/about` |
 | `ROLEPLAY_CONTEXT_MESSAGES` | `15` | Channel history per request |
 | `ROLEPLAY_MAX_CHUNKS` | `3` | Reply split limit |
 | `ROLEPLAY_TIMEOUT_SECONDS` | `60` | Model request timeout |

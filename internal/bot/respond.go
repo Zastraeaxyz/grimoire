@@ -42,6 +42,15 @@ func DeferPublic(s *discordgo.Session, i *discordgo.InteractionCreate) error {
 	})
 }
 
+// ReplyPublic sends a new public reply. Use it only before the interaction
+// has been acknowledged.
+func ReplyPublic(s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
+	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Content: content},
+	})
+}
+
 // EditEphemeral replaces a deferred reply with content.
 func EditEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content string) error {
 	return EditEphemeralWithComponents(s, i, content, nil)

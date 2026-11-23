@@ -40,8 +40,9 @@ Discord bot for the zxyz server, built on
   [Stats reports](#stats-reports).
 - **Roleplay keyholder**: an optional second Discord bot with its own token,
   its own persona, and its own commands. It answers mentions and replies, reads
-  image attachments, and can check a member's ChastiSafe lock status as a tool.
-  See [Roleplay bot](#roleplay-bot).
+  image attachments, judges the captions members bring her, and can check a
+  member's ChastiSafe lock status as a tool. See
+  [Roleplay bot](#roleplay-bot).
 - **Member ChastiSafe access**: `/cs` links a member's own ChastiSafe
   developer code and exposes their account, profiles, lock templates, and
   running locks. Members can create, inspect, update, and delete templates, and
@@ -75,6 +76,7 @@ Discord bot for the zxyz server, built on
 - `/cs template view|create|clone|update|delete|simulate|card|background` - manage templates
 - `/cs locks` - list running locks
 - `/cs lock view|load|addtime|settime|freeze|hide|purpose|cards|settings|unlock|reset|abandon|split` - manage running locks
+- `/about` - ask Raven to introduce herself (roleplay bot)
 - `/chastity status` - show your ChastiSafe lock status (roleplay bot)
 - `/prompt` - show the persona system prompt (roleplay bot admins)
 
@@ -374,6 +376,7 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `ROLEPLAY_LOCKEE_ROLE_ID` | no | | Optional role gate; empty lets any member talk to the persona |
 | `ROLEPLAY_SYSTEM_PROMPT_FILE` | no | `./prompts/keyholder.md` | Persona prompt file |
 | `ROLEPLAY_SYSTEM_PROMPT` | no | | Inline persona override |
+| `ROLEPLAY_ABOUT_FILE` | no | `./prompts/about.md` | Self introduction served by `/about` |
 | `ROLEPLAY_CONTEXT_MESSAGES` | no | `15` | Channel messages sent as context |
 | `ROLEPLAY_MAX_CHUNKS` | no | `3` | Largest reply, in Discord messages |
 | `ROLEPLAY_TIMEOUT_SECONDS` | no | `60` | Model request timeout |

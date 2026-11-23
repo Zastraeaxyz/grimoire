@@ -41,6 +41,7 @@ type Options struct {
 	BotName      string
 	LockeeRoleID string
 	SystemPrompt string
+	About        string
 
 	ContextMessages int
 	MaxChunks       int
@@ -73,6 +74,7 @@ type Feature struct {
 	botName      string
 	lockeeRoleID string
 	basePrompt   string
+	about        string
 	tools        []ai.Tool
 
 	contextMessages int
@@ -166,6 +168,7 @@ func New(opts Options) *Feature {
 		botName:         opts.BotName,
 		lockeeRoleID:    opts.LockeeRoleID,
 		basePrompt:      basePrompt,
+		about:           strings.TrimSpace(opts.About),
 		tools:           tools,
 		contextMessages: opts.ContextMessages,
 		maxChunks:       opts.MaxChunks,
@@ -204,6 +207,7 @@ func (f *Feature) Register(b *bot.Bot) {
 		b.AddPublicCommand(statusCommand(), f.handleStatusCommand)
 	}
 	b.AddCommand(promptCommand(), f.handlePromptCommand)
+	b.AddPublicCommand(aboutCommand(), f.handleAboutCommand)
 	b.AddMessageHandler(f.handleMessage)
 }
 

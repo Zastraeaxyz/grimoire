@@ -124,7 +124,7 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 		"ROLEPLAY_GUILD_ID", "ROLEPLAY_PUNISH_PERCENT", "ROLEPLAY_PUNISH_MIN_MINUTES",
 		"ROLEPLAY_PUNISH_MAX_MINUTES", "ROLEPLAY_VISION_ENABLED",
 		"ROLEPLAY_VISION_MAX_IMAGES", "ROLEPLAY_VISION_MAX_IMAGE_MB",
-		"ROLEPLAY_VISION_DETAIL",
+		"ROLEPLAY_VISION_DETAIL", "ROLEPLAY_ABOUT_FILE",
 	} {
 		t.Setenv(key, "")
 	}
@@ -155,6 +155,23 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 		cfg.Roleplay.VisionMaxImageMB != 8 ||
 		cfg.Roleplay.VisionDetail != "auto" {
 		t.Fatalf("vision defaults = %+v", cfg.Roleplay)
+	}
+	if cfg.Roleplay.AboutFile != "./prompts/about.md" {
+		t.Fatalf("AboutFile = %q", cfg.Roleplay.AboutFile)
+	}
+}
+
+func TestLoadRoleplayAboutFileOverride(t *testing.T) {
+	t.Setenv("DISCORD_TOKEN", "token")
+	t.Setenv("GUILD_ID", "123")
+	t.Setenv("ROLEPLAY_ABOUT_FILE", "./prompts/custom-about.md")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Roleplay.AboutFile != "./prompts/custom-about.md" {
+		t.Fatalf("AboutFile = %q", cfg.Roleplay.AboutFile)
 	}
 }
 

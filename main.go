@@ -180,6 +180,11 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 		return err
 	}
 
+	about, err := loadRoleplayAbout(rp)
+	if err != nil {
+		log.Warn("roleplay about text unavailable", "err", err)
+	}
+
 	chat, err := ai.New(ai.Options{
 		APIKey:    cfg.OpenRouterAPIKey,
 		BaseURL:   cfg.OpenRouterBaseURL,
@@ -246,6 +251,7 @@ func startRoleplay(ctx context.Context, cfg *config.Config, log *slog.Logger) er
 		BotName:          rp.BotName,
 		LockeeRoleID:     rp.LockeeRoleID,
 		SystemPrompt:     prompt,
+		About:            about,
 		ContextMessages:  rp.ContextMessages,
 		MaxChunks:        rp.MaxChunks,
 		Timeout:          rp.Timeout,
@@ -298,6 +304,21 @@ func loadRoleplayPrompt(rp config.RoleplayConfig) (string, error) {
 		return "", fmt.Errorf("the roleplay system prompt %q is empty", rp.SystemPromptFile)
 	}
 	return prompt, nil
+}
+
+// loadRoleplayAbout reads the self introduction served by /about. A missing
+// file disables only the greeting text, and the command keeps an in-character
+// fallback.
+func loadRoleplayAbout(rp config.RoleplayConfig) (string, error) {
+	data, err := os.ReadFile(rp.AboutFile)
+	if err != nil {
+		return "", fmt.Errorf("reading the roleplay about file %q: %w", rp.AboutFile, err)
+	}
+	about := strings.TrimSpace(string(data))
+	if about == "" {
+		return "", fmt.Errorf("the roleplay about file %q is empty", rp.AboutFile)
+	}
+	return strings.ReplaceAll(about, "{{bot}}", rp.BotName), nil
 }
 
 // seedSettings lets a fresh install boot with env configuration before an

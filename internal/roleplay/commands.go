@@ -2,6 +2,7 @@ package roleplay
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -28,6 +29,32 @@ func promptCommand() *discordgo.ApplicationCommand {
 		Name:        "prompt",
 		Description: "Show the persona system prompt.",
 	}
+}
+
+func aboutCommand() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name:        "about",
+		Description: "Ask me who I am and what I enjoy.",
+	}
+}
+
+// handleAboutCommand is public. It posts the authored introduction in the
+// channel so new members meet her the same way everyone else did.
+func (f *Feature) handleAboutCommand(_ context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	return bot.ReplyPublic(s, i, f.aboutText())
+}
+
+// aboutText returns the authored introduction, or an in-character line when the
+// file could not be loaded.
+func (f *Feature) aboutText() string {
+	if text := strings.TrimSpace(f.about); text != "" {
+		return text
+	}
+	name := strings.TrimSpace(f.botName)
+	if name == "" {
+		name = "your keyholder"
+	}
+	return fmt.Sprintf("I am %s, and I decide who kneels here. Bring me a caption worth reading, and we will see what you are worth.", name)
 }
 
 // handlePromptCommand is admin-only. It shows the persona file plus the

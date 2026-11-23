@@ -80,6 +80,7 @@ type RoleplayConfig struct {
 	LockeeRoleID     string
 	SystemPromptFile string
 	SystemPrompt     string
+	AboutFile        string
 	ContextMessages  int
 	MaxChunks        int
 	Timeout          time.Duration
@@ -248,6 +249,7 @@ func loadRoleplay() (RoleplayConfig, error) {
 		LockeeRoleID:     strings.TrimSpace(os.Getenv("ROLEPLAY_LOCKEE_ROLE_ID")),
 		SystemPromptFile: envOr("ROLEPLAY_SYSTEM_PROMPT_FILE", "./prompts/keyholder.md"),
 		SystemPrompt:     strings.TrimSpace(os.Getenv("ROLEPLAY_SYSTEM_PROMPT")),
+		AboutFile:        envOr("ROLEPLAY_ABOUT_FILE", "./prompts/about.md"),
 		ContextMessages:  contextMessages,
 		MaxChunks:        maxChunks,
 		Timeout:          timeout,
