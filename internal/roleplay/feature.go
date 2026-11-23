@@ -50,6 +50,12 @@ type Options struct {
 	RateLimitCount  int
 	RateLimitWindow time.Duration
 
+	// Vision attaches Discord-hosted image attachments to the model request.
+	VisionEnabled    bool
+	VisionMaxImages  int
+	VisionMaxImageMB int
+	VisionDetail     string
+
 	// Punishment scales added lock time for a broken rule.
 	PunishPercent int
 	PunishMin     time.Duration
@@ -72,6 +78,11 @@ type Feature struct {
 	contextMessages int
 	maxChunks       int
 	timeout         time.Duration
+
+	visionEnabled   bool
+	visionMaxImages int
+	visionMaxBytes  int64
+	visionDetail    string
 
 	chat      ChatClient
 	locks     LockService
@@ -128,6 +139,18 @@ func New(opts Options) *Feature {
 	if opts.PunishMax < opts.PunishMin {
 		opts.PunishMax = opts.PunishMin
 	}
+	if opts.VisionMaxImages < 1 {
+		opts.VisionMaxImages = 4
+	}
+	if opts.VisionMaxImageMB < 1 {
+		opts.VisionMaxImageMB = 8
+	}
+	switch strings.ToLower(strings.TrimSpace(opts.VisionDetail)) {
+	case "auto", "low", "high", "original":
+		opts.VisionDetail = strings.ToLower(strings.TrimSpace(opts.VisionDetail))
+	default:
+		opts.VisionDetail = "auto"
+	}
 
 	now := time.Now
 	prompt := strings.ReplaceAll(opts.SystemPrompt, "{{bot}}", opts.BotName)
@@ -147,19 +170,25 @@ func New(opts Options) *Feature {
 		contextMessages: opts.ContextMessages,
 		maxChunks:       opts.MaxChunks,
 		timeout:         opts.Timeout,
-		chat:            opts.Chat,
-		locks:           opts.Locks,
-		keyholder:       opts.Keyholder,
-		log:             opts.Log,
-		punishPercent:   opts.PunishPercent,
-		punishMin:       opts.PunishMin,
-		punishMax:       opts.PunishMax,
-		sem:             make(chan struct{}, opts.MaxConcurrent),
-		limiter:         newLimiter(opts.RateLimitCount, opts.RateLimitWindow, now),
-		lockCache:       newLockeesCache(30*time.Second, now),
-		templates:       newTemplateCache(5*time.Minute, now),
-		sent:            newSentCache(time.Hour, now),
-		now:             now,
+
+		visionEnabled:   opts.VisionEnabled,
+		visionMaxImages: opts.VisionMaxImages,
+		visionMaxBytes:  int64(opts.VisionMaxImageMB) * 1024 * 1024,
+		visionDetail:    opts.VisionDetail,
+
+		chat:          opts.Chat,
+		locks:         opts.Locks,
+		keyholder:     opts.Keyholder,
+		log:           opts.Log,
+		punishPercent: opts.PunishPercent,
+		punishMin:     opts.PunishMin,
+		punishMax:     opts.PunishMax,
+		sem:           make(chan struct{}, opts.MaxConcurrent),
+		limiter:       newLimiter(opts.RateLimitCount, opts.RateLimitWindow, now),
+		lockCache:     newLockeesCache(30*time.Second, now),
+		templates:     newTemplateCache(5*time.Minute, now),
+		sent:          newSentCache(time.Hour, now),
+		now:           now,
 	}
 	return f
 }

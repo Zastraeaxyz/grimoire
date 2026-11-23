@@ -87,6 +87,12 @@ type RoleplayConfig struct {
 	RateLimitCount   int
 	RateLimitWindow  time.Duration
 
+	// Vision attaches Discord image attachments to the persona's prompt.
+	VisionEnabled    bool
+	VisionMaxImages  int
+	VisionMaxImageMB int
+	VisionDetail     string
+
 	// Punishment scales added lock time for a broken rule.
 	PunishPercent int
 	PunishMin     time.Duration
@@ -222,6 +228,18 @@ func loadRoleplay() (RoleplayConfig, error) {
 	if err != nil {
 		return RoleplayConfig{}, err
 	}
+	visionEnabled, err := envBool("ROLEPLAY_VISION_ENABLED", true)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	visionMaxImages, err := envInt("ROLEPLAY_VISION_MAX_IMAGES", 4)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
+	visionMaxImageMB, err := envInt("ROLEPLAY_VISION_MAX_IMAGE_MB", 8)
+	if err != nil {
+		return RoleplayConfig{}, err
+	}
 
 	return RoleplayConfig{
 		Token:            strings.TrimSpace(os.Getenv("DISCORD_ROLEPLAY_TOKEN")),
@@ -239,6 +257,10 @@ func loadRoleplay() (RoleplayConfig, error) {
 		PunishPercent:    punishPercent,
 		PunishMin:        time.Duration(punishMinMinutes) * time.Minute,
 		PunishMax:        time.Duration(punishMaxMinutes) * time.Minute,
+		VisionEnabled:    visionEnabled,
+		VisionMaxImages:  visionMaxImages,
+		VisionMaxImageMB: visionMaxImageMB,
+		VisionDetail:     envOr("ROLEPLAY_VISION_DETAIL", "auto"),
 		Chastity: ChastityConfig{
 			Enabled:       chastityEnabled,
 			KeyholderCode: strings.TrimSpace(os.Getenv("CHASTISAFE_KEYHOLDER_CODE")),

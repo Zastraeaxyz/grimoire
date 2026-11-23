@@ -122,7 +122,9 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 		"DISCORD_ROLEPLAY_TOKEN", "ROLEPLAY_LOCKEE_ROLE_ID", "OPENROUTER_API_KEY",
 		"ROLEPLAY_CHASTITY_ENABLED", "CHASTISAFE_KEYHOLDER_CODE", "CHASTISAFE_BASE_URL",
 		"ROLEPLAY_GUILD_ID", "ROLEPLAY_PUNISH_PERCENT", "ROLEPLAY_PUNISH_MIN_MINUTES",
-		"ROLEPLAY_PUNISH_MAX_MINUTES",
+		"ROLEPLAY_PUNISH_MAX_MINUTES", "ROLEPLAY_VISION_ENABLED",
+		"ROLEPLAY_VISION_MAX_IMAGES", "ROLEPLAY_VISION_MAX_IMAGE_MB",
+		"ROLEPLAY_VISION_DETAIL",
 	} {
 		t.Setenv(key, "")
 	}
@@ -147,6 +149,32 @@ func TestLoadRoleplayDefaults(t *testing.T) {
 		cfg.Roleplay.PunishMin != 30*time.Minute ||
 		cfg.Roleplay.PunishMax != 4*time.Hour {
 		t.Fatalf("punishment defaults = %+v", cfg.Roleplay)
+	}
+	if !cfg.Roleplay.VisionEnabled ||
+		cfg.Roleplay.VisionMaxImages != 4 ||
+		cfg.Roleplay.VisionMaxImageMB != 8 ||
+		cfg.Roleplay.VisionDetail != "auto" {
+		t.Fatalf("vision defaults = %+v", cfg.Roleplay)
+	}
+}
+
+func TestLoadRoleplayVisionOverrides(t *testing.T) {
+	t.Setenv("DISCORD_TOKEN", "token")
+	t.Setenv("GUILD_ID", "123")
+	t.Setenv("ROLEPLAY_VISION_ENABLED", "false")
+	t.Setenv("ROLEPLAY_VISION_MAX_IMAGES", "2")
+	t.Setenv("ROLEPLAY_VISION_MAX_IMAGE_MB", "3")
+	t.Setenv("ROLEPLAY_VISION_DETAIL", "high")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Roleplay.VisionEnabled ||
+		cfg.Roleplay.VisionMaxImages != 2 ||
+		cfg.Roleplay.VisionMaxImageMB != 3 ||
+		cfg.Roleplay.VisionDetail != "high" {
+		t.Fatalf("vision = %+v", cfg.Roleplay)
 	}
 }
 

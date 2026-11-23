@@ -39,9 +39,9 @@ Discord bot for the zxyz server, built on
   most visited blogs from the last 7 days. See
   [Stats reports](#stats-reports).
 - **Roleplay keyholder**: an optional second Discord bot with its own token,
-  its own persona, and its own commands. It answers mentions and replies and
-  can check a member's ChastiSafe lock status as a tool. See
-  [Roleplay bot](#roleplay-bot).
+  its own persona, and its own commands. It answers mentions and replies, reads
+  image attachments, and can check a member's ChastiSafe lock status as a tool.
+  See [Roleplay bot](#roleplay-bot).
 - **Member ChastiSafe access**: `/cs` links a member's own ChastiSafe
   developer code and exposes their account, profiles, lock templates, and
   running locks. Members can create, inspect, update, and delete templates, and
@@ -380,6 +380,10 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `ROLEPLAY_MAX_CONCURRENT` | no | `2` | Concurrent model calls |
 | `ROLEPLAY_RATE_LIMIT_CAPACITY` | no | `2` | Requests per member per window |
 | `ROLEPLAY_RATE_LIMIT_SECONDS` | no | `10` | Rate limit window |
+| `ROLEPLAY_VISION_ENABLED` | no | `true` | Read image attachments on mentions and replies |
+| `ROLEPLAY_VISION_MAX_IMAGES` | no | `4` | Images sent per request |
+| `ROLEPLAY_VISION_MAX_IMAGE_MB` | no | `8` | Largest image the persona reads |
+| `ROLEPLAY_VISION_DETAIL` | no | `auto` | Image detail: `auto`, `low`, `high`, or `original` |
 | `ROLEPLAY_PUNISH_PERCENT` | no | `5` | Percent of remaining time added per punishment |
 | `ROLEPLAY_PUNISH_MIN_MINUTES` | no | `30` | Smallest punishment |
 | `ROLEPLAY_PUNISH_MAX_MINUTES` | no | `240` | Largest punishment |

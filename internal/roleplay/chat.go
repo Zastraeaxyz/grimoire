@@ -58,7 +58,8 @@ func (f *Feature) handleMessage(ctx context.Context, s *discordgo.Session, m *di
 	}
 
 	prompt := cleanContent(m, botID)
-	if prompt == "" {
+	images := f.visionImages(m, referenced)
+	if prompt == "" && len(images) == 0 {
 		f.send(s, m, "You have my attention. Tell me what you need.", 1)
 		return nil
 	}
@@ -70,10 +71,10 @@ func (f *Feature) handleMessage(ctx context.Context, s *discordgo.Session, m *di
 	}
 	defer release()
 
-	return f.respond(ctx, s, m, referenced, prompt)
+	return f.respond(ctx, s, m, referenced, prompt, images)
 }
 
-func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, referenced *discordgo.Message, prompt string) error {
+func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, referenced *discordgo.Message, prompt string, images []ai.Image) error {
 	ctx, cancel := context.WithTimeout(ctx, f.timeout)
 	defer cancel()
 
@@ -81,7 +82,7 @@ func (f *Feature) respond(ctx context.Context, s *discordgo.Session, m *discordg
 	defer stopTyping()
 
 	history := f.gatherContext(s, m, referenced)
-	messages := buildMessages(s.State.User.ID, history, prompt, m.Author, m.Timestamp)
+	messages := buildMessages(s.State.User.ID, history, prompt, m.Author, m.Timestamp, images)
 	if len(messages) == 0 {
 		return nil
 	}
@@ -204,7 +205,7 @@ func containsMessage(messages []*discordgo.Message, id string) bool {
 	return false
 }
 
-func buildMessages(selfID string, history []*discordgo.Message, prompt string, author *discordgo.User, timestamp time.Time) []ai.Message {
+func buildMessages(selfID string, history []*discordgo.Message, prompt string, author *discordgo.User, timestamp time.Time, images []ai.Image) []ai.Message {
 	messages := make([]ai.Message, 0, len(history)+1)
 
 	for _, message := range history {
@@ -233,6 +234,7 @@ func buildMessages(selfID string, history []*discordgo.Message, prompt string, a
 		messages = append(messages, ai.Message{
 			Role:    "user",
 			Content: truncateRunes(current, maxCharsPerMessage),
+			Images:  images,
 		})
 	}
 

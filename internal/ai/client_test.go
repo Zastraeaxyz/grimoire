@@ -236,3 +236,89 @@ func TestChatSkipsEmptyMessages(t *testing.T) {
 		t.Fatal("expected an error with no messages")
 	}
 }
+
+func TestChatSendsImagesAsContentParts(t *testing.T) {
+	var got map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatalf("decoding body: %v", err)
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"a cat"}}]}`)
+	}))
+	defer server.Close()
+
+	client, err := New(Options{APIKey: "k", BaseURL: server.URL, Model: "m"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), "", []Message{{
+		Role:    "user",
+		Content: "what is this?",
+		Images: []Image{
+			{Label: "Image on the current message: cat.png", URL: "https://cdn.discordapp.com/cat.png", Detail: "auto"},
+			{URL: "  "},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+
+	messages, ok := got["messages"].([]any)
+	if !ok || len(messages) != 1 {
+		t.Fatalf("messages = %#v", got["messages"])
+	}
+	parts, ok := messages[0].(map[string]any)["content"].([]any)
+	if !ok || len(parts) != 3 {
+		t.Fatalf("content = %#v", messages[0].(map[string]any)["content"])
+	}
+	if parts[0].(map[string]any)["type"] != "text" || parts[0].(map[string]any)["text"] != "what is this?" {
+		t.Fatalf("text part = %#v", parts[0])
+	}
+	if parts[1].(map[string]any)["type"] != "text" || parts[1].(map[string]any)["text"] != "Image on the current message: cat.png" {
+		t.Fatalf("label part = %#v", parts[1])
+	}
+	imagePart := parts[2].(map[string]any)
+	if imagePart["type"] != "image_url" {
+		t.Fatalf("image part = %#v", imagePart)
+	}
+	imageURL := imagePart["image_url"].(map[string]any)
+	if imageURL["url"] != "https://cdn.discordapp.com/cat.png" || imageURL["detail"] != "auto" {
+		t.Fatalf("image_url = %#v", imageURL)
+	}
+}
+
+func TestChatKeepsImageOnlyMessages(t *testing.T) {
+	var got map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatalf("decoding body: %v", err)
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"a cat"}}]}`)
+	}))
+	defer server.Close()
+
+	client, err := New(Options{APIKey: "k", BaseURL: server.URL, Model: "m"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), "", []Message{{
+		Role:   "user",
+		Images: []Image{{URL: "https://cdn.discordapp.com/cat.png"}},
+	}})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+
+	messages, ok := got["messages"].([]any)
+	if !ok || len(messages) != 1 {
+		t.Fatalf("messages = %#v", got["messages"])
+	}
+	parts, ok := messages[0].(map[string]any)["content"].([]any)
+	if !ok || len(parts) != 1 || parts[0].(map[string]any)["type"] != "image_url" {
+		t.Fatalf("content = %#v", messages[0].(map[string]any)["content"])
+	}
+}

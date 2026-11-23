@@ -595,7 +595,7 @@ func TestBuildMessages(t *testing.T) {
 		},
 	}
 
-	messages := buildMessages("bot-1", history, "yes mistress", &discordgo.User{ID: "user-1", Username: "alice"}, time.Time{})
+	messages := buildMessages("bot-1", history, "yes mistress", &discordgo.User{ID: "user-1", Username: "alice"}, time.Time{}, nil)
 	if len(messages) != 3 {
 		t.Fatalf("messages = %+v", messages)
 	}

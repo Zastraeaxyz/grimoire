@@ -9,6 +9,8 @@ It stays completely offline unless `DISCORD_ROLEPLAY_TOKEN` is set.
 ## What it does today
 
 - Answers when a member mentions it or replies to one of its messages.
+- Reads image attachments on the current message and on the message it replies
+  to, so a member can show rather than describe.
 - Any member can talk to it by default. Setting the lockee role limits it to
   members with that role.
 - Can check the caller's ChastiSafe lock status with a tool, only when locks or
@@ -36,6 +38,22 @@ Discord Developer Portal, not in this repository.
 
 If the token is set but the OpenRouter key or the prompt is missing, the persona
 logs an error and Grimoire keeps running.
+
+## Images
+
+Image attachments on the mentioning message and on the message being replied to
+are passed to the model as multimodal content, with a short label that names
+the file. That lets a member send a picture with no text at all.
+
+Only images Discord hosts are used, so the model never fetches an arbitrary
+link. Accepted types are PNG, JPEG, WebP, and GIF. At most four images go per
+request, and each must be 8 MB or smaller. History stays text-only; images from
+older messages are not re-sent.
+
+The configured model must support vision. With a text-only slug the request
+fails and Raven answers that she lost her train of thought, so point
+`OPENROUTER_MODEL` at a vision-capable model. Turn the feature off with
+`ROLEPLAY_VISION_ENABLED=false`.
 
 ## ChastiSafe
 
@@ -136,6 +154,10 @@ This version only touches timed locks, and only through three tools.
 | `ROLEPLAY_MAX_CONCURRENT` | `2` | Concurrent model calls |
 | `ROLEPLAY_RATE_LIMIT_CAPACITY` | `2` | Requests per member per window |
 | `ROLEPLAY_RATE_LIMIT_SECONDS` | `10` | Window length |
+| `ROLEPLAY_VISION_ENABLED` | `true` | Read image attachments |
+| `ROLEPLAY_VISION_MAX_IMAGES` | `4` | Images per request |
+| `ROLEPLAY_VISION_MAX_IMAGE_MB` | `8` | Largest image read |
+| `ROLEPLAY_VISION_DETAIL` | `auto` | `auto`, `low`, `high`, or `original` |
 | `ROLEPLAY_PUNISH_PERCENT` | `5` | Percent of remaining time added per punishment |
 | `ROLEPLAY_PUNISH_MIN_MINUTES` | `30` | Smallest punishment |
 | `ROLEPLAY_PUNISH_MAX_MINUTES` | `240` | Largest punishment |

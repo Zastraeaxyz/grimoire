@@ -28,6 +28,17 @@ type Message struct {
 	Content    string
 	ToolCalls  []ToolCall
 	ToolCallID string
+
+	// Images are attached to a user turn as multimodal content parts. They are
+	// ignored on other roles.
+	Images []Image
+}
+
+// Image is one image URL sent to a vision-capable model.
+type Image struct {
+	Label  string
+	URL    string
+	Detail string
 }
 
 // Usage reports token usage for a request.
@@ -155,9 +166,54 @@ func (c *Client) Model() string {
 
 type requestMessage struct {
 	Role       string     `json:"role"`
-	Content    string     `json:"content"`
+	Content    any        `json:"content"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
+}
+
+// contentPart is one multimodal content entry. OpenRouter's OpenAI-compatible
+// API accepts a plain string or an array of these parts.
+type contentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *imageURL `json:"image_url,omitempty"`
+}
+
+type imageURL struct {
+	URL    string `json:"url"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// messageContent keeps text-only turns as a string and switches to content
+// parts when images are attached.
+func messageContent(text string, images []Image) any {
+	usable := make([]Image, 0, len(images))
+	for _, image := range images {
+		if strings.TrimSpace(image.URL) != "" {
+			usable = append(usable, image)
+		}
+	}
+	if len(usable) == 0 {
+		return text
+	}
+
+	parts := make([]contentPart, 0, len(usable)*2+1)
+	if text != "" {
+		parts = append(parts, contentPart{Type: "text", Text: text})
+	}
+	for _, image := range usable {
+		if label := strings.TrimSpace(image.Label); label != "" {
+			parts = append(parts, contentPart{Type: "text", Text: label})
+		}
+		parts = append(parts, contentPart{
+			Type: "image_url",
+			ImageURL: &imageURL{
+				URL:    image.URL,
+				Detail: strings.TrimSpace(image.Detail),
+			},
+		})
+	}
+	return parts
 }
 
 type chatRequest struct {
@@ -207,12 +263,12 @@ func (c *Client) ChatWithTools(ctx context.Context, system string, messages []Me
 		if role == "" {
 			continue
 		}
-		if content == "" && len(message.ToolCalls) == 0 && message.ToolCallID == "" {
+		if content == "" && len(message.ToolCalls) == 0 && message.ToolCallID == "" && len(message.Images) == 0 {
 			continue
 		}
 		wire = append(wire, requestMessage{
 			Role:       role,
-			Content:    content,
+			Content:    messageContent(content, message.Images),
 			ToolCalls:  message.ToolCalls,
 			ToolCallID: message.ToolCallID,
 		})
