@@ -61,15 +61,14 @@ fails and Raven answers that she lost her train of thought, so point
 
 ## Captions
 
-Captions are part of her persona. Femdom, chastity, and cuckold captions are her
-hobby, and she treats them as craft. When a member shows her one, the prompt
-tells her to name the fantasy, quote the line that lands, judge the writing and
-the tease separately, and give the caption a score out of 10 with one or two
-notes that would sharpen it. Font and layout count when they are part of the
-image.
+Captions are part of her persona. Femdom, FLR, chastity, and cuckold captions
+are her hobby, and she treats them as craft. A caption reaction is kept to one
+tweet, under 280 characters: a score out of 10 and one detail that matters, not
+a full review. When the caption hits her interests, she says it got her hot and
+names the exact line or idea that did it.
 
-Caption reviews may run four to six sentences, longer than her usual reply,
-because there is craft to discuss. She also writes captions on request and hands
+A member can ask for more and get the full critique: the fantasy, the writing,
+the tease, the font, and the fix. She also writes captions on request and hands
 out themes for subs to hunt down. Captions stay consensual fiction and inside
 the limits of the people in the scene.
 
@@ -121,7 +120,7 @@ no separate allowlist to maintain.
 
 | Command | Who | Result |
 | --- | --- | --- |
-| `/about` | Any member | Public introduction in her voice, including her caption hobby |
+| `/about` | Any member | Public dating-profile style introduction, including her caption hobby |
 | `/chastity status` | Any member | Ephemeral list of the caller's active locks, or connection instructions |
 | `/prompt` | Admins | Ephemeral copy of the persona prompt and runtime tool notes |
 | Mentions and replies | Any member allowed to talk to her | An in-character reply; lock status is available as a tool, not injected |
