@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/joho/godotenv v1.5.1
+	github.com/zastraeaxyz/chastisafe-go v0.1.0
 	golang.org/x/net v0.63.0
 	modernc.org/sqlite v1.62.0
 )

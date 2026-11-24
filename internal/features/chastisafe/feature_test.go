@@ -12,7 +12,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 
-	cs "grimoire/internal/chastisafe"
+	cs "github.com/zastraeaxyz/chastisafe-go"
 	"grimoire/internal/cryptobox"
 	"grimoire/internal/store"
 )

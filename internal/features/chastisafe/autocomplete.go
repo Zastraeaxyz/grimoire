@@ -9,7 +9,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 
 	"grimoire/internal/bot"
-	cs "grimoire/internal/chastisafe"
+	cs "github.com/zastraeaxyz/chastisafe-go"
 )
 
 // handleCSAutocomplete answers template and lock reference suggestions.

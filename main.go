@@ -19,7 +19,7 @@ import (
 
 	"grimoire/internal/ai"
 	"grimoire/internal/bot"
-	"grimoire/internal/chastisafe"
+	"github.com/zastraeaxyz/chastisafe-go"
 	"grimoire/internal/config"
 	"grimoire/internal/cryptobox"
 	"grimoire/internal/features/bdsmlr"

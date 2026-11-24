@@ -3,7 +3,7 @@ package chastisafe
 import (
 	"github.com/bwmarrin/discordgo"
 
-	cs "grimoire/internal/chastisafe"
+	cs "github.com/zastraeaxyz/chastisafe-go"
 )
 
 const csCommandName = "cs"

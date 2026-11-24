@@ -13,7 +13,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 
 	"grimoire/internal/ai"
-	"grimoire/internal/chastisafe"
+	"github.com/zastraeaxyz/chastisafe-go"
 )
 
 func testFeature(t *testing.T, source LockService) *Feature {

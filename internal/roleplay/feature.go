@@ -13,7 +13,7 @@ import (
 
 	"grimoire/internal/ai"
 	"grimoire/internal/bot"
-	"grimoire/internal/chastisafe"
+	"github.com/zastraeaxyz/chastisafe-go"
 )
 
 // ChatClient is the model surface the feature needs.

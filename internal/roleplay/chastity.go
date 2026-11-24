@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"grimoire/internal/ai"
-	"grimoire/internal/chastisafe"
+	"github.com/zastraeaxyz/chastisafe-go"
 )
 
 // chastityGuidance is appended to the persona prompt only when ChastiSafe is
