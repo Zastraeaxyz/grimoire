@@ -38,17 +38,10 @@ Discord bot for the zxyz server, built on
   visitors and pageviews for today, yesterday, and the last week, plus the
   most visited blogs from the last 7 days. See
   [Stats reports](#stats-reports).
-- **Roleplay keyholder**: an optional second Discord bot with its own token,
-  its own persona, and its own commands. It answers mentions and replies, reads
-  image attachments, judges the captions members bring her, remembers each
-  person and the server, and can check a member's ChastiSafe lock status as a
-  tool. Admins can teach her new behavior with `/learn` without a deployment.
-  See [Roleplay bot](#roleplay-bot).
 - **Member ChastiSafe access**: `/cs` links a member's own ChastiSafe
   developer code and exposes their account, profiles, lock templates, and
   running locks. Members can create, inspect, update, and delete templates, and
-  inspect or modify the running locks they are allowed to touch. The roleplay
-  bot keeps using its single keyholder code and never reads these member codes.
+  inspect or modify the running locks they are allowed to touch.
 - `/rss add url:<url> [channel] [backfill]` - follow a feed, posting the newest
   three items right away
 - `/rss remove feed:<feed>` - stop following a feed
@@ -77,12 +70,6 @@ Discord bot for the zxyz server, built on
 - `/cs template view|create|clone|update|delete|simulate|card|background` - manage templates
 - `/cs locks` - list running locks
 - `/cs lock view|load|addtime|settime|freeze|hide|purpose|cards|settings|unlock|reset|abandon|split` - manage running locks
-- `/about` - ask Raven to introduce herself (roleplay bot)
-- `/memory view|forget|list` - view or forget your memory, or list memory as an admin (roleplay bot)
-- `/learn start|stop|status` - teach Raven's SOUL in a private admin channel (roleplay bot admins)
-- `/soul undo|reset` - restore the previous SOUL or reset to the repository seed (roleplay bot admins)
-- `/chastity status` - show your ChastiSafe lock status (roleplay bot)
-- `/prompt` - show the live persona SOUL (roleplay bot admins)
 
 Feeds are polled once an hour. Each item is recorded in SQLite by GUID, so a
 restart, a reconnect, or a duplicate feed entry never posts twice. Feed posts
@@ -325,34 +312,6 @@ no global public lock directory, so `lockees` is the popularity value it sorts
 by. Scripts, tasks, pillory, and lockee lifecycle actions are not exposed yet.
 All replies are ephemeral.
 
-This feature is separate from the roleplay bot. Raven still uses one account
-from `CHASTISAFE_KEYHOLDER_CODE` and never reads member codes. See
-[docs/roleplay.md](docs/roleplay.md).
-
-## Roleplay bot
-
-The repository can run a second Discord bot next to Grimoire. Both bots share
-one process, one database, and one deploy. The persona has its own token,
-commands, system prompt, intents, and rate limits, and it stays offline when
-`DISCORD_ROLEPLAY_TOKEN` is empty. It can live in its own server; with no
-`ROLEPLAY_GUILD_ID` it serves every guild it is invited to.
-
-- It answers only mentions and replies to its own messages.
-- Any member can talk to it by default. Set `ROLEPLAY_LOCKEE_ROLE_ID` to limit
-  it to one role.
-- It can check ChastiSafe lock status as a tool when the conversation calls
-  for it. Status is not injected into every reply.
-- It can add time as a punishment and freeze or thaw a timed lock.
-- It remembers each member and the server, with short-term and long-term notes
-  that compact themselves when they grow too long.
-- Its persona lives in a live `SOUL.md` on the data volume. `/learn` lets an
-  admin teach her new behavior and approve the SOUL change without a deploy.
-- Exposes `/prompt` to admins so the live SOUL can be reviewed.
-- Exposes `/memory view` so a member can see and delete what she remembers.
-- An incomplete roleplay configuration logs an error and leaves Grimoire running.
-
-Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
-
 ## Configuration
 
 | Variable | Required | Default | Notes |
@@ -378,43 +337,8 @@ Setup and behavior are covered in [docs/roleplay.md](docs/roleplay.md).
 | `STATS_TIMEZONE` | no | `UTC` | Time zone for day boundaries and report times |
 | `STATS_TIMES` | no | `09:00,21:00` | Comma-separated report times, or `off` for manual only |
 | `STATS_CHANNEL_ID` | no | | Seeds the stats channel on first boot; `/settings stats` wins |
-| `DISCORD_ROLEPLAY_TOKEN` | no | | Second bot token; enables the roleplay persona |
-| `ROLEPLAY_GUILD_ID` | no | all guilds the bot is in | Optional server lock |
-| `ROLEPLAY_BOT_NAME` | no | `Keyholder` | Name the persona uses in its prompt |
-| `ROLEPLAY_LOCKEE_ROLE_ID` | no | | Optional role gate; empty lets any member talk to the persona |
-| `ROLEPLAY_SYSTEM_PROMPT_FILE` | no | `./prompts/keyholder.md` | Seed for the live SOUL on first boot |
-| `ROLEPLAY_SYSTEM_PROMPT` | no | | Inline seed; the live SOUL wins after first boot |
-| `ROLEPLAY_ABOUT_FILE` | no | `./prompts/about.md` | Self introduction served by `/about` |
-| `ROLEPLAY_CONTEXT_MESSAGES` | no | `15` | Channel messages sent as context |
-| `ROLEPLAY_MAX_CHUNKS` | no | `3` | Largest reply, in Discord messages |
-| `ROLEPLAY_TIMEOUT_SECONDS` | no | `60` | Model request timeout |
-| `ROLEPLAY_MAX_CONCURRENT` | no | `2` | Concurrent model calls |
-| `ROLEPLAY_RATE_LIMIT_CAPACITY` | no | `2` | Requests per member per window |
-| `ROLEPLAY_RATE_LIMIT_SECONDS` | no | `10` | Rate limit window |
-| `ROLEPLAY_VISION_ENABLED` | no | `true` | Read image attachments on mentions and replies |
-| `ROLEPLAY_VISION_MAX_IMAGES` | no | `4` | Images sent per request |
-| `ROLEPLAY_VISION_MAX_IMAGE_MB` | no | `8` | Largest image the persona reads |
-| `ROLEPLAY_VISION_DETAIL` | no | `auto` | Image detail: `auto`, `low`, `high`, or `original` |
-| `ROLEPLAY_MEMORY_ENABLED` | no | `true` | Persistent per-member and server memory |
-| `ROLEPLAY_MEMORY_DIR` | no | `<database dir>/roleplay` | SOUL and memory directory; use a volume path |
-| `ROLEPLAY_MEMORY_MAX_CHARS` | no | `3000` | Memory file size before compaction |
-| `ROLEPLAY_MEMORY_CONTEXT_MAX_CHARS` | no | `2500` | Memory characters injected per request |
-| `ROLEPLAY_MEMORY_TIMEOUT_SECONDS` | no | `30` | Background memory capture timeout |
-| `ROLEPLAY_SOUL_MAX_CHARS` | no | `8000` | Largest editable SOUL |
-| `ROLEPLAY_LEARNING_SESSION_MINUTES` | no | `60` | Lifetime of a `/learn` session |
-| `ROLEPLAY_LEARNING_TIMEOUT_SECONDS` | no | `60` | Learning model request timeout |
-| `ROLEPLAY_AUX_MODEL` | no | main model | Model for memory, compaction, and learning |
-| `ROLEPLAY_AUX_MAX_TOKENS` | no | `4096` | Token cap for the auxiliary model |
-| `ROLEPLAY_PUNISH_PERCENT` | no | `5` | Percent of remaining time added per punishment |
-| `ROLEPLAY_PUNISH_MIN_MINUTES` | no | `30` | Smallest punishment |
-| `ROLEPLAY_PUNISH_MAX_MINUTES` | no | `240` | Largest punishment |
-| `OPENROUTER_API_KEY` | with roleplay | | OpenRouter key |
-| `OPENROUTER_MODEL` | no | `deepseek/deepseek-v4.1-flash-1017` | Model slug |
-| `OPENROUTER_BASE_URL` | no | `https://openrouter.ai/api/v1` | API root |
-| `ROLEPLAY_CHASTITY_ENABLED` | no | `true` | Read-only ChastiSafe status |
-| `CHASTISAFE_KEYHOLDER_CODE` | for chastity | | Persona account's developer code |
 | `CHASTISAFE_STORE_KEY` | no | generated key file | Encrypts member codes; 32 bytes as base64 or hex |
-| `CHASTISAFE_BASE_URL` | no | `https://chastisafe.com/api-v1` | ChastiSafe API root, shared by both bots |
+| `CHASTISAFE_BASE_URL` | no | `https://chastisafe.com/api-v1` | ChastiSafe API root |
 
 Copy `.env.example` to `.env` for local development. Real environment
 variables override `.env`, and database settings override the seed values
@@ -430,9 +354,7 @@ after the first `/welcome setup`.
 3. Drag the bot's role above the `Member` role in Server Settings > Roles.
 4. Run `/welcome setup role:@Member channel:#welcome rules:#rules`.
 
-No privileged gateway intents are required for Grimoire. The optional
-roleplay bot needs the **Message Content** intent enabled in its own Discord
-application, covered in [docs/roleplay.md](docs/roleplay.md).
+No privileged gateway intents are required for Grimoire.
 
 ## Local development
 

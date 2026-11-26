@@ -19,7 +19,6 @@ RUN apk add --no-cache ca-certificates tzdata su-exec \
 
 WORKDIR /app
 COPY --from=build /out/grimoire /app/grimoire
-COPY --from=build /src/prompts /app/prompts
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

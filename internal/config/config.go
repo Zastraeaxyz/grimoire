@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,16 +52,6 @@ type Config struct {
 	BaseRoleID       string
 	StatsChannelID   string
 
-	// OpenRouter is shared by AI features. Only the roleplay bot needs it for
-	// now.
-	OpenRouterAPIKey  string
-	OpenRouterModel   string
-	OpenRouterBaseURL string
-
-	// Roleplay is the optional second Discord bot. It stays offline when its
-	// token is empty.
-	Roleplay RoleplayConfig
-
 	// Chastisafe configures the main bot's per-member ChastiSafe login.
 	Chastisafe ChastisafeConfig
 }
@@ -72,59 +61,6 @@ type ChastisafeConfig struct {
 	BaseURL  string
 	StoreKey string
 }
-
-// RoleplayConfig configures the persona bot that runs next to Grimoire.
-type RoleplayConfig struct {
-	Token            string
-	GuildID          string
-	BotName          string
-	LockeeRoleID     string
-	SystemPromptFile string
-	SystemPrompt     string
-	AboutFile        string
-	ContextMessages  int
-	MaxChunks        int
-	Timeout          time.Duration
-	MaxConcurrent    int
-	RateLimitCount   int
-	RateLimitWindow  time.Duration
-
-	// Vision attaches Discord image attachments to the persona's prompt.
-	VisionEnabled    bool
-	VisionMaxImages  int
-	VisionMaxImageMB int
-	VisionDetail     string
-
-	// Memory and SOUL persistence live on the data volume.
-	MemoryEnabled      bool
-	MemoryDir          string
-	MemoryMaxChars     int
-	MemoryContextChars int
-	MemoryTimeout      time.Duration
-	SoulMaxChars       int
-	LearningTTL        time.Duration
-	LearningTimeout    time.Duration
-	AuxModel           string
-	AuxMaxTokens       int
-
-	// Punishment scales added lock time for a broken rule.
-	PunishPercent int
-	PunishMin     time.Duration
-	PunishMax     time.Duration
-
-	// Chastity enables the ChastiSafe tools.
-	Chastity ChastityConfig
-}
-
-// ChastityConfig binds the persona to one ChastiSafe keyholder account.
-type ChastityConfig struct {
-	Enabled       bool
-	KeyholderCode string
-	BaseURL       string
-}
-
-// Enabled reports whether the roleplay bot has a token.
-func (r RoleplayConfig) Enabled() bool { return r.Token != "" }
 
 // Load reads configuration from .env (when present) and the environment.
 func Load() (*Config, error) {
@@ -148,21 +84,11 @@ func Load() (*Config, error) {
 		StatsSiteURL:     envOr("STATS_SITE_URL", "https://bdsmlr.zastraea.xyz"),
 		StatsTimezone:    envOr("STATS_TIMEZONE", "UTC"),
 		StatsChannelID:   strings.TrimSpace(os.Getenv("STATS_CHANNEL_ID")),
-		OpenRouterAPIKey: strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")),
-		OpenRouterModel:  envOr("OPENROUTER_MODEL", defaultOpenRouterModel),
-		OpenRouterBaseURL: envOr("OPENROUTER_BASE_URL",
-			"https://openrouter.ai/api/v1"),
 		Chastisafe: ChastisafeConfig{
 			BaseURL:  strings.TrimSpace(os.Getenv("CHASTISAFE_BASE_URL")),
 			StoreKey: strings.TrimSpace(os.Getenv("CHASTISAFE_STORE_KEY")),
 		},
 	}
-
-	roleplay, err := loadRoleplay(cfg.DatabasePath)
-	if err != nil {
-		return nil, err
-	}
-	cfg.Roleplay = roleplay
 
 	interval, err := time.ParseDuration(envOr("RSS_POLL_INTERVAL", "1h"))
 	if err != nil {
@@ -195,146 +121,6 @@ func Load() (*Config, error) {
 }
 
 const defaultStatsTimes = "09:00,21:00"
-
-const defaultOpenRouterModel = "deepseek/deepseek-v4.1-flash-1017"
-
-// loadRoleplay reads the optional second bot configuration. Every value has a
-// safe default except the token, the lockee role, and the OpenRouter key.
-func loadRoleplay(databasePath string) (RoleplayConfig, error) {
-	chastityEnabled, err := envBool("ROLEPLAY_CHASTITY_ENABLED", true)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-
-	contextMessages, err := envInt("ROLEPLAY_CONTEXT_MESSAGES", 15)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	maxChunks, err := envInt("ROLEPLAY_MAX_CHUNKS", 3)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	timeout, err := envDuration("ROLEPLAY_TIMEOUT_SECONDS", 60*time.Second)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	maxConcurrent, err := envInt("ROLEPLAY_MAX_CONCURRENT", 2)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	rateLimitCount, err := envInt("ROLEPLAY_RATE_LIMIT_CAPACITY", 2)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	rateLimitWindow, err := envDuration("ROLEPLAY_RATE_LIMIT_SECONDS", 10*time.Second)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	punishPercent, err := envInt("ROLEPLAY_PUNISH_PERCENT", 5)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	punishMinMinutes, err := envInt("ROLEPLAY_PUNISH_MIN_MINUTES", 30)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	punishMaxMinutes, err := envInt("ROLEPLAY_PUNISH_MAX_MINUTES", 240)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	visionEnabled, err := envBool("ROLEPLAY_VISION_ENABLED", true)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	visionMaxImages, err := envInt("ROLEPLAY_VISION_MAX_IMAGES", 4)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	visionMaxImageMB, err := envInt("ROLEPLAY_VISION_MAX_IMAGE_MB", 8)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	memoryEnabled, err := envBool("ROLEPLAY_MEMORY_ENABLED", true)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	memoryMaxChars, err := envInt("ROLEPLAY_MEMORY_MAX_CHARS", 3000)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	memoryContextChars, err := envInt("ROLEPLAY_MEMORY_CONTEXT_MAX_CHARS", 2500)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	memoryTimeout, err := envDuration("ROLEPLAY_MEMORY_TIMEOUT_SECONDS", 30*time.Second)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	soulMaxChars, err := envInt("ROLEPLAY_SOUL_MAX_CHARS", 8000)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	learningMinutes, err := envInt("ROLEPLAY_LEARNING_SESSION_MINUTES", 60)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	learningTimeout, err := envDuration("ROLEPLAY_LEARNING_TIMEOUT_SECONDS", 60*time.Second)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	auxMaxTokens, err := envInt("ROLEPLAY_AUX_MAX_TOKENS", 4096)
-	if err != nil {
-		return RoleplayConfig{}, err
-	}
-	memoryDir := strings.TrimSpace(os.Getenv("ROLEPLAY_MEMORY_DIR"))
-	if memoryDir == "" {
-		memoryDir = filepath.Join(filepath.Dir(databasePath), "roleplay")
-	}
-
-	return RoleplayConfig{
-		Token:              strings.TrimSpace(os.Getenv("DISCORD_ROLEPLAY_TOKEN")),
-		GuildID:            roleplayGuildID(),
-		BotName:            envOr("ROLEPLAY_BOT_NAME", "Keyholder"),
-		LockeeRoleID:       strings.TrimSpace(os.Getenv("ROLEPLAY_LOCKEE_ROLE_ID")),
-		SystemPromptFile:   envOr("ROLEPLAY_SYSTEM_PROMPT_FILE", "./prompts/keyholder.md"),
-		SystemPrompt:       strings.TrimSpace(os.Getenv("ROLEPLAY_SYSTEM_PROMPT")),
-		AboutFile:          envOr("ROLEPLAY_ABOUT_FILE", "./prompts/about.md"),
-		ContextMessages:    contextMessages,
-		MaxChunks:          maxChunks,
-		Timeout:            timeout,
-		MaxConcurrent:      maxConcurrent,
-		RateLimitCount:     rateLimitCount,
-		RateLimitWindow:    rateLimitWindow,
-		PunishPercent:      punishPercent,
-		PunishMin:          time.Duration(punishMinMinutes) * time.Minute,
-		PunishMax:          time.Duration(punishMaxMinutes) * time.Minute,
-		VisionEnabled:      visionEnabled,
-		VisionMaxImages:    visionMaxImages,
-		VisionMaxImageMB:   visionMaxImageMB,
-		VisionDetail:       envOr("ROLEPLAY_VISION_DETAIL", "auto"),
-		MemoryEnabled:      memoryEnabled,
-		MemoryDir:          memoryDir,
-		MemoryMaxChars:     memoryMaxChars,
-		MemoryContextChars: memoryContextChars,
-		MemoryTimeout:      memoryTimeout,
-		SoulMaxChars:       soulMaxChars,
-		LearningTTL:        time.Duration(learningMinutes) * time.Minute,
-		LearningTimeout:    learningTimeout,
-		AuxModel:           strings.TrimSpace(os.Getenv("ROLEPLAY_AUX_MODEL")),
-		AuxMaxTokens:       auxMaxTokens,
-		Chastity: ChastityConfig{
-			Enabled:       chastityEnabled,
-			KeyholderCode: strings.TrimSpace(os.Getenv("CHASTISAFE_KEYHOLDER_CODE")),
-			BaseURL:       strings.TrimSpace(os.Getenv("CHASTISAFE_BASE_URL")),
-		},
-	}, nil
-}
-
-// roleplayGuildID returns the optional server lock for the persona. An empty
-// value lets it serve every guild it is invited to.
-func roleplayGuildID() string {
-	return strings.TrimSpace(os.Getenv("ROLEPLAY_GUILD_ID"))
-}
 
 func (c *Config) validate() error {
 	if c.Token == "" {
@@ -393,19 +179,6 @@ func envInt(key string, fallback int) (int, error) {
 		return 0, fmt.Errorf("%s %q is not an integer", key, raw)
 	}
 	return value, nil
-}
-
-// envDuration reads a duration from a plain number of seconds.
-func envDuration(key string, fallback time.Duration) (time.Duration, error) {
-	raw := strings.TrimSpace(os.Getenv(key))
-	if raw == "" {
-		return fallback, nil
-	}
-	seconds, err := strconv.Atoi(raw)
-	if err != nil {
-		return 0, fmt.Errorf("%s %q is not a number of seconds", key, raw)
-	}
-	return time.Duration(seconds) * time.Second, nil
 }
 
 func envOr(key, fallback string) string {

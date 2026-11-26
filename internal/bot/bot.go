@@ -275,7 +275,7 @@ func (b *Bot) handleMessageCreate(s *discordgo.Session, m *discordgo.MessageCrea
 }
 
 // detectGuild lets a bot without a configured guild use the only guild it is
-// in. That keeps a dedicated persona bot working without another ID to copy.
+// in. That keeps a deployment working without another ID to copy.
 func (b *Bot) detectGuild(r *discordgo.Ready) {
 	if r == nil || len(r.Guilds) != 1 {
 		return

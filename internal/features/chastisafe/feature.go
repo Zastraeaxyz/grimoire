@@ -1,8 +1,7 @@
 // Package chastisafe adds member-scoped ChastiSafe commands to Grimoire.
 //
 // Every member stores their own developer code after /cs login. Commands
-// resolve that code for the caller only. The roleplay bot has its own separate
-// keyholder client and never uses this package.
+// resolve that code for the caller only.
 package chastisafe
 
 import (
